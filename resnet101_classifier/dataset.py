@@ -30,35 +30,15 @@ class ClassifierDataset(Dataset):
         self.image_dir = image_dir
         self.transform = transform
         # self.images = os.listdir(image_dir)
-        images = [file for file in Path(image_dir).glob(f'*/{state}.npy')]
+        self.images = [file for file in Path(image_dir).glob(f'*/{state}.npy')]
+        self.images.remove(Path('/home/ARO.local/tahor/PycharmProjects/data/pair_data/box_19_class_B_num_88/before.npy'))
+        print('len images: ', len(self.images))
         self.channels = channels
         self.c_step = c_step
         ###
-        # self.images = self.images[0:5]
+        self.images = self.images[0:20]
         ###
         # self.images = list(filter(lambda x: np.load(str(x)).ndim == 3, self.images))
-        self.images = []
-        self.check_images(images)
-
-    def check_images(self, images):
-        valid = 0
-        not_valid = 0
-        image_list = []
-        for image_path in tqdm(images, desc='Classifier check images'):
-            im = np.load(image_path)
-            # im = np.memmap(image_path)
-            if im.ndim == 3:
-                self.images.append(image_path)
-                image_list.append(str(image_path))
-                valid += 1
-            else:
-                not_valid += 1
-        with open('image_list.txt', '+w') as f:
-            f.writelines(image_list)
-        f.close()
-        print('file closed')
-        print(f'({valid}/{not_valid + valid}) valid images')
-
 
     def load_all_images(self, images):
         valid = 0

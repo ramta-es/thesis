@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from sympy.stats.sampling.sample_numpy import numpy
 from torch.optim import lr_scheduler
 import torch.backends.cudnn as cudnn
 import numpy as np
@@ -13,7 +14,8 @@ import time
 import os
 from PIL import Image
 from tempfile import TemporaryDirectory
-from dataset import ClassifierDataset
+# from dataset import ClassifierDataset
+from resnet101_classifier.dataset import ClassifierDataset
 from torch.utils.tensorboard import SummaryWriter
 import clearml_agent
 from tqdm import tqdm
@@ -69,9 +71,9 @@ def save_checkpoint(model, optimizer, filename="my_checkpoint.pth.tar"):
 # imshow(out, 'out') #, title=[classes[x] for x in classes if len(classes) < 5])
 
 
-def train_model(model, dataloaders, criterion, optimizer, scheduler, writer, num_epochs=25):
+def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, scheduler, writer, num_epochs=25):
     since = time.time()
-    print('line 106')
+    print('line 74')
     # Create a temporary directory to save training checkpoints
     with TemporaryDirectory() as tempdir:
         best_model_params_path = os.path.join(tempdir, 'best_model_params.pt')
@@ -118,15 +120,16 @@ def train_model(model, dataloaders, criterion, optimizer, scheduler, writer, num
                     # statistics
                     running_loss += loss.item() * inputs.size(0)
                     running_corrects += torch.sum(preds == labels.data)
-                epoch_loss = running_loss / len(datasets[phase])
-                if phase == 'train':
-                    scheduler.step()
-                else:
-                    epoch_acc = running_corrects.double() / len(datasets[phase])
-                    writer.add_scalar('val/accuracy', epoch_acc)
-                print('line 143')
+                    epoch_loss = running_loss / (dataset_sizes[phase])
+                    if phase == 'train':
+                        scheduler.step()
+                    else:
+                        epoch_acc = running_corrects.double() / (dataset_sizes[phase])
+                        writer.add_scalar('val/accuracy', epoch_acc, epoch)
 
-                writer.add_scalar(f'{phase}/loss', loss.item())
+
+                    writer.add_scalar(f'{phase}/loss', loss.item(), epoch)
+                    writer.add_scalar(f'epoch_loss', epoch_loss, epoch)
                 # print(f'{phase} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
 
                 # deep copy the model
@@ -134,6 +137,14 @@ def train_model(model, dataloaders, criterion, optimizer, scheduler, writer, num
                     best_acc = epoch_acc
                     torch.save(model.state_dict(), best_model_params_path)
                     save_checkpoint(model, optimizer)
+
+        img_grid = torchvision.utils.make_grid(inputs[:, [40, 30, 60], :, :])
+        # print('image grid shape', np.ndarray(img_grid).shape)
+        writer.add_image(f'HS_image_channel{40}', img_grid)
+        # writer.add_graph(torchvision.models.resnet101(False).cpu(), img_grid)
+        writer.close()
+
+
 
         time_elapsed = time.time() - since
         print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
@@ -172,11 +183,12 @@ def visualize_model(model, dataloaders, writer, num_images=1):
                     model.train(mode=was_training)
                     return
             print('inputs size:', (inputs.size()))
-            img_grid = torchvision.utils.make_grid(inputs.cpu()[:, 40, :, :])
-            writer.add_image(f'HS_image_channel{40}', img_grid)
-            writer.close()
-
-            writer.add_graph(model, inputs.cpu())
+            # img_grid = torchvision.utils.make_grid(inputs.cpu()[:, 40, :, :])
+            # print('image grid shape', np.ndarray(img_grid).shape)
+            # writer.add_image(f'HS_image_channel{40}', img_grid)
+            # writer.close()
+            #
+            # writer.add_graph(models.resnet101(weights=models.ResNet101_Weights.IMAGENET1K_V2), inputs.cpu())
 
     model.train(mode=was_training)
 
@@ -200,16 +212,17 @@ def main():
     }
     dataset = ClassifierDataset('/home/ARO.local/tahor/PycharmProjects/data/pair_data', channels=840, c_step=10,
                                 transform=False, state='before')
-    print('line 45')
+
+    print('line 205')
     train_dataset, test_dataset = torch.utils.data.random_split(dataset, [0.8, 0.2])
     data_dict = {'train': train_dataset, 'val': test_dataset}
     dataset_sizes = {x: len(data_dict[x]) for x in ['train', 'val']}
 
-    print('line 51')
+    print('line 210')
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=25, shuffle=True)
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=5, shuffle=True)
-    dataloaders = {'train': torch.utils.data.DataLoader(train_dataset, batch_size=2, shuffle=True),
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=100, shuffle=True)
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=25, shuffle=True)
+    dataloaders = {'train': torch.utils.data.DataLoader(train_dataset, batch_size=5, shuffle=True),
                    'val': torch.utils.data.DataLoader(test_dataset, batch_size=1, shuffle=True)}
 
     ######
@@ -230,11 +243,12 @@ def main():
     # Decay LR by a factor of 0.1 every 7 epochs
     exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
 
-    model_ft = train_model(model_ft, dataloaders, criterion, optimizer_ft, exp_lr_scheduler,
-                           writer, num_epochs=50)
+    model_ft = train_model(model_ft, dataloaders, dataset_sizes, criterion, optimizer_ft, exp_lr_scheduler,
+                           writer, num_epochs=100)
 
 
     visualize_model(model_ft, dataloaders, writer)
+    print('vis model')
 '''
 
 # convnet as fix feature extractor####
@@ -278,7 +292,7 @@ plt.show()
 
 ###Inference on costume images####
 
-
+'''
 def visualize_model_predictions(model,img_path):
     was_training = model.training
     model.eval()
@@ -299,7 +313,7 @@ def visualize_model_predictions(model,img_path):
 
         model.train(mode=was_training)
 
-
+'''
 
 if __name__ == '__main__':
     main()
