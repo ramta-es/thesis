@@ -8,8 +8,8 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 # DEVICE = "cpu"
 LEARNING_RATE = 4e-3
-BATCH_SIZE = 2
-NUM_WORKERS = 2
+BATCH_SIZE = 1
+NUM_WORKERS = 200
 IMAGE_SIZE = 640
 CHANNELS_IMG = 84
 # MEAN = [0.5, 0.5, 0.5]

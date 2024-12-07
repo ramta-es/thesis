@@ -10,12 +10,12 @@ import pandas as pd
 from colorama import Fore
 from torchvision.models.shufflenetv2 import channel_shuffle
 
-import models.pix2pix.config as config
-from paths.persimmon_paths import hpc_paths_for_data_after, hpc_paths_for_data_before
+import pix2pix.config as config
+# from paths.persimmon_paths import hpc_paths_for_data_after, hpc_paths_for_data_before
 from sklearn.model_selection import train_test_split
 
-before_path = hpc_paths_for_data_before['single_fruit_path']
-after_path = hpc_paths_for_data_after['single_fruit_path']
+# before_path = hpc_paths_for_data_before['single_fruit_path']
+# after_path = hpc_paths_for_data_after['single_fruit_path']
 
 
 
@@ -29,8 +29,8 @@ class Pix2PixDataset(Dataset):
             if before_path.with_name('after.npy').exists() and 1.2 >= before_path.with_name('after.npy').stat().st_size / before_path.stat().st_size >= 0.8:
                 self.before.append(before_path)
                 self.after.append(before_path.with_name('after.npy'))
-            if len(self.before) == 5 and len(self.after) == 5:
-                break
+            # if len(self.before) == 5 and len(self.after) == 5:
+            #     break
         self.transform = transform
 
     def __len__(self):
