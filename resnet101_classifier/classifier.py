@@ -218,12 +218,12 @@ def main():
     data_dict = {'train': train_dataset, 'val': test_dataset}
     dataset_sizes = {x: len(data_dict[x]) for x in ['train', 'val']}
 
-    print('line 210')
+    print('line 221')
 
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=100, shuffle=True)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=25, shuffle=True)
-    dataloaders = {'train': torch.utils.data.DataLoader(train_dataset, batch_size=5, shuffle=True),
-                   'val': torch.utils.data.DataLoader(test_dataset, batch_size=1, shuffle=True)}
+    dataloaders = {'train': torch.utils.data.DataLoader(train_dataset, batch_size=25, shuffle=True),
+                   'val': torch.utils.data.DataLoader(test_dataset, batch_size=5, shuffle=True)}
 
     ######
     writer = SummaryWriter('runs/remote/classifier')  ###### Added
@@ -244,7 +244,7 @@ def main():
     exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
 
     model_ft = train_model(model_ft, dataloaders, dataset_sizes, criterion, optimizer_ft, exp_lr_scheduler,
-                           writer, num_epochs=100)
+                           writer, num_epochs=50)
 
 
     visualize_model(model_ft, dataloaders, writer)
