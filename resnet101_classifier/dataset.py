@@ -36,7 +36,7 @@ class ClassifierDataset(Dataset):
         self.channels = channels
         self.c_step = c_step
         ###
-        self.images = self.images[0:20]
+        # self.images = self.images[0:10]
         ###
         # self.images = list(filter(lambda x: np.load(str(x)).ndim == 3, self.images))
 
@@ -75,7 +75,7 @@ class ClassifierDataset(Dataset):
         image_path = self.images[index]
 
         image = config.initial_transform(image=np.load(str(image_path)
-                                                       )[:, :, [i for i in range(self.channels) if i % self.c_step == 0]])['image']
+                                                       )[:, :, [i for i in range(self.channels) if i % self.c_step == 0]] / 4096)['image']
 
         label = label_dict[str(image_path).split('/')[-2].split('_')[3]]
 
@@ -83,9 +83,6 @@ class ClassifierDataset(Dataset):
             image = config.transform_only_input(image=image)["image"]
 
         return image.transpose((2, 1, 0)).astype(np.float32), label
-
-
-
 
 
 

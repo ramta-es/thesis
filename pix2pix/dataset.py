@@ -45,8 +45,8 @@ class Pix2PixDataset(Dataset):
     def __getitem__(self, index):
         # p = nn.AvgPool3d((10, 1, 1), stride=(10, 1, 1))
         if self.channels is not list:
-            before = np.load(str(self.before[index]))[:, :, [i for i in range(self.channels) if i % self.c_step == 0]]
-            after = np.load(str(self.after[index]))[:, :, [i for i in range(self.channels) if i % self.c_step == 0]]
+            before = np.load(str(self.before[index]))[:, :, [i for i in range(self.channels) if i % self.c_step == 0]] / 4096
+            after = np.load(str(self.after[index]))[:, :, [i for i in range(self.channels) if i % self.c_step == 0]] / 4096
         else:
             before = np.load(str(self.before[index]))[:, :, self.channels]
             after = np.load(str(self.after[index]))[:, :, self.channels]
