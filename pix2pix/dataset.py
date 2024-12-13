@@ -10,7 +10,7 @@ import pandas as pd
 from colorama import Fore
 from torchvision.models.shufflenetv2 import channel_shuffle
 
-import pix2pix.config as config
+import config as config
 # from paths.persimmon_paths import hpc_paths_for_data_after, hpc_paths_for_data_before
 from sklearn.model_selection import train_test_split
 
