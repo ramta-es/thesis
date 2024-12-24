@@ -125,18 +125,19 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, schedul
                         scheduler.step()
                     else:
                         epoch_acc = running_corrects.double() / (dataset_sizes[phase])
-                        writer.add_scalar('val/accuracy', epoch_acc, epoch)
 
 
-                    writer.add_scalar(f'{phase}/loss', loss.item(), epoch)
-                    writer.add_scalar(f'epoch_loss', epoch_loss, epoch)
+
                 # print(f'{phase} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
 
                 # deep copy the model
                 if phase == 'val' and epoch_acc > best_acc:
                     best_acc = epoch_acc
+                    writer.add_scalar('val/accuracy', epoch_acc, epoch)
                     torch.save(model.state_dict(), best_model_params_path)
                     save_checkpoint(model, optimizer)
+            writer.add_scalar(f'{phase}/loss', loss.item(), epoch)
+            writer.add_scalar(f'epoch_loss', epoch_loss, epoch)
 
         img_grid = torchvision.utils.make_grid(inputs[:, [40, 30, 60], :, :])
         # print('image grid shape', np.ndarray(img_grid).shape)
@@ -152,7 +153,7 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, schedul
 
         # load best model weights
         model.load_state_dict(torch.load(best_model_params_path))
-    return model
+        return model
 
 
 

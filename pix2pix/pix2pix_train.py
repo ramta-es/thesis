@@ -42,9 +42,9 @@ def train_fn(disc, gen, loader, opt_disc, opt_gen, l1, bce, g_scaler, d_scaler, 
             D_loss = (D_real_loss + D_fake_loss) / 2
             print("D_loss: ", D_loss)
 
-        writer.add_scalar('D_real_loss/idx', D_real_loss, idx)
-        writer.add_scalar('D_fake_loss/idx', D_fake_loss, idx)
-        writer.add_scalar('D_loss/idx', D_loss, idx)
+        # writer.add_scalar('D_real_loss/idx', D_real_loss, idx)
+        # writer.add_scalar('D_fake_loss/idx', D_fake_loss, idx)
+        # writer.add_scalar('D_loss/idx', D_loss, idx)
 
 
 
@@ -61,24 +61,32 @@ def train_fn(disc, gen, loader, opt_disc, opt_gen, l1, bce, g_scaler, d_scaler, 
             L1 = l1(y_fake, y) * config.L1_LAMBDA
             G_loss = G_fake_loss + L1
 
-        writer.add_scalar('G_fake_loss/idx', G_fake_loss, idx)
-        writer.add_scalar('DGloss/idx', G_loss, idx)
+        # writer.add_scalar('G_fake_loss/idx', G_fake_loss, idx)
+        # writer.add_scalar('DGloss/idx', G_loss, idx)
 
         opt_gen.zero_grad()
         g_scaler.scale(G_loss).backward()
         g_scaler.step(opt_gen)
         g_scaler.update()
 
-    writer.add_scalar('D_real_loss/epoch', D_real_loss, epoch)
-    writer.add_scalar('D_fake_loss/epoch', D_fake_loss, epoch)
-    writer.add_scalar('D_loss/epoch', D_loss, epoch)
-    writer.add_scalar('G_fake_loss/epoch', G_fake_loss, epoch)
-    writer.add_scalar('G_loss/epoch', G_loss, epoch)
+        if idx == 1:
+            image_grid_first = torchvision.utils.make_grid(y_fake[:, [40, 30, 60], :, :])
 
-    img_grid = torchvision.utils.make_grid(y_fake[:, [40, 30, 60], :, :])
+    # writer.add_scalar('D_real_loss/epoch', D_real_loss, epoch)
+    # writer.add_scalar('D_fake_loss/epoch', D_fake_loss, epoch)
+    # writer.add_scalar('D_loss/epoch', D_loss, epoch)
+    # writer.add_scalar('G_fake_loss/epoch', G_fake_loss, epoch)
+    # writer.add_scalar('G_loss/epoch', G_loss, epoch)
+
+    # img_grid = torchvision.utils.make_grid(y_fake[:, [40, 30, 60], :, :])
     # print('image grid shape', np.ndarray(img_grid).shape)
-    writer.add_image(f'HS_image_channel{[40, 30, 60]}', img_grid)
-    writer.close()
+
+    return {'D_real_loss/epoch': D_real_loss, 'D_fake_loss/epoch': D_fake_loss,
+            'D_loss/epoch': D_loss, 'G_fake_loss/epoch': G_fake_loss,
+            'G_loss/epoch': G_loss, 'image_grid_in': torchvision.utils.make_grid(x[:, [40, 30, 60], :, :]*1000),
+            'img_grid_out' : torchvision.utils.make_grid(y_fake[:, [40, 30, 60], :, :]*1000)}
+    # writer.add_image(f'HS_image_channel{[40, 30, 60]}', img_grid)
+    # writer.close()
 
 
 def train_val_dataset(dataset, split: float) -> dict:
@@ -116,12 +124,18 @@ def main():
 
     for epoch in range(config.NUM_EPOCHS):
         print(f"EPOC {epoch}")
-        train_fn(disc, gen, train_loader, opt_disc, opt_gen, L1_LOSS, BCE, g_scaler, d_scaler, writer, epoch)
+        epoch_dict = train_fn(disc, gen, train_loader, opt_disc, opt_gen, L1_LOSS, BCE, g_scaler, d_scaler, writer, epoch)
+        for key in epoch_dict:
+            try:
+                writer.add_scalar(key, epoch_dict[key], epoch)
+            except:
+                writer.add_image(f'{key} {[40, 30, 60]}:', epoch_dict[key])
+
 
         if config.SAVE_MODEL and epoch % 5 == 0:
             save_checkpoint(gen, opt_gen, filename=config.CHECKPOINT_GEN)
             save_checkpoint(disc, opt_disc, filename=config.CHECKPOINT_DISC)
-
+    writer.close()
         # save_some_examples(gen, val_loader, epoch, folder="evaluation")
 
 
