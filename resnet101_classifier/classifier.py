@@ -139,8 +139,7 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, schedul
             writer.add_scalar(f'{phase}/loss', loss.item(), epoch)
             writer.add_scalar(f'epoch_loss', epoch_loss, epoch)
 
-        img_grid = torchvision.utils.make_grid(inputs[:, [40, 30, 60], :, :])
-        # print('image grid shape', np.ndarray(img_grid).shape)
+        img_grid = torchvision.utils.make_grid(inputs[[3, 5, 10], [40, 30, 60], :, :])
         writer.add_image(f'HS_image_channel{40}', img_grid)
         # writer.add_graph(torchvision.models.resnet101(False).cpu(), img_grid)
         writer.close()
@@ -197,32 +196,17 @@ def visualize_model(model, dataloaders, writer, num_images=1):
 def main():
     # Data augmentation and normalization for training
     # Just normalization for validation
-    data_transforms = {
-        'train': transforms.Compose([
-            transforms.RandomResizedCrop(224),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-        ]),
-        'val': transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-        ]),
-    }
+
     dataset = ClassifierDataset('/home/ARO.local/tahor/PycharmProjects/data/pair_data', channels=840, c_step=10,
                                 transform=False, state='before')
 
-    print('line 205')
+    print('line 204')
     train_dataset, test_dataset = torch.utils.data.random_split(dataset, [0.8, 0.2])
     data_dict = {'train': train_dataset, 'val': test_dataset}
     dataset_sizes = {x: len(data_dict[x]) for x in ['train', 'val']}
 
     print('line 221')
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=100, shuffle=True)
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=25, shuffle=True)
     dataloaders = {'train': torch.utils.data.DataLoader(train_dataset, batch_size=25, shuffle=True),
                    'val': torch.utils.data.DataLoader(test_dataset, batch_size=5, shuffle=True)}
 
