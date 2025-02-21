@@ -1,5 +1,6 @@
 import sys
 import numpy as np
+import os
 import matplotlib.pyplot as plt
 from PyQt5.QtWidgets import (QApplication, QWidget, QPushButton, QFileDialog, QLabel, QVBoxLayout,
                              QHBoxLayout, QComboBox, QMessageBox, QListWidget, QListWidgetItem)
@@ -13,19 +14,25 @@ from matplotlib.figure import Figure
 class NumpyViewerApp(QWidget):
     """
     A PyQt5-based GUI application to visualize and analyze NumPy image arrays.
-    Supports loading two NumPy arrays, selecting channels for visualization, measuring distances,
-    and extracting pixel statistics.
+    Supports loading multiple NumPy arrays from a folder, selecting channels for visualization,
+    measuring distances, and extracting pixel statistics.
     """
 
     def __init__(self):
         """Initialize the GUI and application state variables."""
         super().__init__()
         self.initUI()
-        self.array1 = None  # First NumPy array
-        self.array2 = None  # Second NumPy array
+        self.images = []  # List to store NumPy arrays
         self.points = []  # Stores clicked points for distance calculation
         self.selected_pixels = []  # Stores selected pixel values for statistics
         self.selected_channels = []  # Stores selected channels for visualization
+        self.mean = {}
+        self.median = {}
+        self.std_dev = {}
+        self.min_val = {}
+        self.max_val = {}
+        self.sigma = {}
+        self.select_polygon = False  # Flag to indicate if polygon selection mode is on
 
     def initUI(self):
         """Set up the GUI layout and widgets."""
@@ -36,20 +43,13 @@ class NumpyViewerApp(QWidget):
         layout = QVBoxLayout()
 
         # Buttons for loading images
-        self.load_button1 = QPushButton("Load NumPy Image File 1")
-        self.load_button1.clicked.connect(lambda: self.load_file(1))
-        layout.addWidget(self.load_button1)
-
-        self.load_button2 = QPushButton("Load NumPy Image File 2")
-        self.load_button2.clicked.connect(lambda: self.load_file(2))
-        layout.addWidget(self.load_button2)
+        self.load_button = QPushButton("Load NumPy Images from Folder")
+        self.load_button.clicked.connect(self.load_folder)
+        layout.addWidget(self.load_button)
 
         # Labels to display image shapes
-        self.shape_label1 = QLabel("Image 1 Shape: Not Loaded")
-        layout.addWidget(self.shape_label1)
-
-        self.shape_label2 = QLabel("Image 2 Shape: Not Loaded")
-        layout.addWidget(self.shape_label2)
+        self.shape_label = QLabel("Images Shape: Not Loaded")
+        layout.addWidget(self.shape_label)
 
         # Channel selector for visualization
         self.channel_selector = QListWidget()
@@ -83,71 +83,60 @@ class NumpyViewerApp(QWidget):
         self.plot_pixel_button.clicked.connect(self.plot_pixel_values)
         layout.addWidget(self.plot_pixel_button)
 
+        # Button to toggle between selecting a polygon or a single point
+        self.toggle_polygon_button = QPushButton("Select Polygon")
+        self.toggle_polygon_button.clicked.connect(self.toggle_polygon_mode)
+        layout.addWidget(self.toggle_polygon_button)
+
         self.setLayout(layout)
 
-    def load_file(self, image_number):
-        """Load a NumPy image file for the specified image number (1 or 2)."""
-        file_path, _ = QFileDialog.getOpenFileName(self, f"Open NumPy File {image_number}", "", "NumPy Files (*.npy)")
-        if file_path:
-            array = np.load(file_path)
-            if array.ndim == 3:
-                if image_number == 1:
-                    self.array1 = array
-                    self.shape_label1.setText(f"Image 1 Shape: {array.shape}")
-                else:
-                    self.array2 = array
-                    self.shape_label2.setText(f"Image 2 Shape: {array.shape}")
+    def load_folder(self):
+        """Load all NumPy image files from the selected folder."""
+        folder_path = QFileDialog.getExistingDirectory(self, "Select Folder")
+        if folder_path:
+            self.images = []  # Clear existing images
+            for file_name in os.listdir(folder_path):
+                if file_name.endswith(".npy"):
+                    file_path = os.path.join(folder_path, file_name)
+                    array = np.load(file_path)
+                    if array.ndim == 3:
+                        self.images.append(array)
+                    else:
+                        QMessageBox.warning(self, "Error", f"File {file_name} is not a 3D array!")
+            if self.images:
+                self.shape_label.setText(f"Loaded {len(self.images)} images.")
                 self.populate_channel_selector()
             else:
-                QMessageBox.warning(self, "Error", "Unsupported image format! Must be a 3D array.")
+                QMessageBox.warning(self, "Error", "No valid .npy files found in the folder.")
 
     def populate_channel_selector(self):
         """Populate the channel selector with available channels."""
         self.channel_selector.clear()
-        if self.array1 is not None:
-            # Add channels for image 1
-            for i in range(self.array1.shape[-1]):
-                self.channel_selector.addItem(QListWidgetItem(f"Image 1 - Channel {i}"))
-        # if self.array2 is not None:
-        #     # Add channels for image 2
-        #     for i in range(self.array2.shape[-1]):
-        #         self.channel_selector.addItem(QListWidgetItem(f"Image 2 - Channel {i}"))
+        if self.images:
+            for i in range(self.images[0].shape[-1]):
+                self.channel_selector.addItem(QListWidgetItem(f"Channel {i}"))
 
     def show_image(self):
         """Display selected image channels."""
-        if self.array1 is None or self.array2 is None:
-            QMessageBox.warning(self, "Error", "Both images must be loaded!")
+        if not self.images:
+            QMessageBox.warning(self, "Error", "No images loaded!")
             return
 
         selected_items = self.channel_selector.selectedItems()
-        selected_channels_image1 = []
-        selected_channels_image2 = selected_channels_image1
-
-        # Separate the selected channels for Image 1 and Image 2
-        for item in selected_items:
-            if "Image 1" in item.text():
-                selected_channels_image1.append(int(item.text().split()[-1]))
-                # selected_channels_image2.append(int(item.text().split()[-1]))
-            # if "Image 2" in item.text():
-
+        self.selected_channels = [int(item.text().split()[-1]) for item in selected_items]
 
         # Clear and update the axes
         self.ax1.clear()
-        if selected_channels_image1:
-            # Show selected channels for Image 1
-            self.ax1.imshow(self.array1[:, :, selected_channels_image1].astype(np.uint16))
-        else:
-            self.ax1.imshow(self.array1[:, :, :3].astype(np.uint16))  # Show the first 3 channels if none selected
-        self.ax1.set_title("Image 1")
-
         self.ax2.clear()
-        if selected_channels_image2:
-            # Show selected channels for Image 2
-            self.ax2.imshow(self.array2[:, :, selected_channels_image2].astype(np.uint16))
-        else:
-            self.ax2.imshow(self.array2[:, :, :3].astype(np.uint16))  # Show the first 3 channels if none selected
-        self.ax2.set_title("Image 2")
 
+        # Show selected channels for the first two images if available
+        if len(self.images) > 0:
+            self.ax1.imshow(self.images[0][:, :, self.selected_channels].astype(np.uint16))
+        if len(self.images) > 1:
+            self.ax2.imshow(self.images[1][:, :, self.selected_channels].astype(np.uint16))
+
+        self.ax1.set_title("Image 1")
+        self.ax2.set_title("Image 2")
         self.canvas.draw()
 
     def calculate_distance(self):
@@ -168,8 +157,22 @@ class NumpyViewerApp(QWidget):
         self.points.append((event.xdata, event.ydata))
         print(f"Point selected: {event.xdata}, {event.ydata}")
 
-        if len(self.points) == 2:
+        # If in polygon mode, plot the polygon
+        if self.select_polygon:
+            self.ax1.plot([point[0] for point in self.points],
+                          [point[1] for point in self.points], 'r-')
+            self.ax2.plot([point[0] for point in self.points],
+                          [point[1] for point in self.points], 'r-')
+            self.canvas.draw()
+
+        elif len(self.points) == 2:
             self.calculate_distance()  # Automatically calculate distance when two points are selected
+
+    def toggle_polygon_mode(self):
+        """Toggle between single point and polygon selection mode."""
+        self.select_polygon = not self.select_polygon
+        mode = "polygon" if self.select_polygon else "single point"
+        QMessageBox.information(self, "Mode Changed", f"Switched to {mode} selection mode.")
 
     def calculate_pixel_statistics(self):
         """Calculate statistics for the selected pixel."""
@@ -180,43 +183,28 @@ class NumpyViewerApp(QWidget):
         # Get the coordinates of the selected pixel
         x, y = self.points[-1]
 
-        # Get the selected channels for image 1 and image 2
+        # Get the selected channels for all images
         selected_items = self.channel_selector.selectedItems()
-        selected_channels_image1 = []
-        selected_channels_image2 = []
+        selected_channels = [int(item.text().split()[-1]) for item in selected_items]
 
-        for item in selected_items:
-            if "Image 1" in item.text():
-                selected_channels_image1.append(int(item.text().split()[-1]))
-            elif "Image 2" in item.text():
-                selected_channels_image2.append(int(item.text().split()[-1]))
+        # Calculate statistics for the selected pixel across all loaded images
+        pixel_values = []
+        for image in self.images:
+            pixel_values.append(image[int(y), int(x), selected_channels])
 
-        # Calculate statistics for Image 1 at the selected pixel
-        if selected_channels_image1:
-            pixel_values_image1 = self.array1[int(y), int(x), selected_channels_image1]
-        else:
-            pixel_values_image1 = self.array1[int(y), int(x), :3]  # Default to first 3 channels
+        combined_pixel_values = np.concatenate(pixel_values)
 
-        # Calculate statistics for Image 2 at the selected pixel
-        if selected_channels_image2:
-            pixel_values_image2 = self.array2[int(y), int(x), selected_channels_image2]
-        else:
-            pixel_values_image2 = self.array2[int(y), int(x), :3]  # Default to first 3 channels
-
-        # Combine pixel values from both images
-        combined_pixel_values = np.concatenate([pixel_values_image1, pixel_values_image2])
-
-        # Calculate statistics
-        mean = np.mean(combined_pixel_values)
-        median = np.median(combined_pixel_values)
-        std_dev = np.std(combined_pixel_values)
-        min_val = np.min(combined_pixel_values)
-        max_val = np.max(combined_pixel_values)
+        # Calculate statistics (mean, median, std_dev, etc.)
+        self.mean = np.mean(combined_pixel_values)
+        self.median = np.median(combined_pixel_values)
+        self.std_dev = np.std(combined_pixel_values)
+        self.min_val = np.min(combined_pixel_values)
+        self.max_val = np.max(combined_pixel_values)
 
         # Display the statistics
         QMessageBox.information(self, "Pixel Statistics",
-                                f"Mean: {mean:.2f}\nMedian: {median:.2f}\nStandard Deviation: {std_dev:.2f}\n"
-                                f"Min: {min_val:.2f}\nMax: {max_val:.2f}")
+                                f"Mean: {self.mean:.2f}\n Median: {self.median:.2f}\n Standard Deviation: {self.std_dev:.2f}"
+                                f"\nMin: {self.min_val:.2f}\nMax: {self.max_val:.2f}")
 
     def plot_pixel_values(self):
         """Plot the pixel values across the selected channels."""
@@ -227,28 +215,22 @@ class NumpyViewerApp(QWidget):
         # Get the coordinates of the selected pixel
         x, y = self.points[-1]
 
-        # Get the selected channels for image 1 and image 2
+        # Get the selected channels for all images
         selected_items = self.channel_selector.selectedItems()
-        selected_channels_image1 = []
-        selected_channels_image2 = []
+        selected_channels = [int(item.text().split()[-1]) for item in selected_items]
 
-        for item in selected_items:
-            if "Image 1" in item.text():
-                selected_channels_image1.append(int(item.text().split()[-1]))
-            elif "Image 2" in item.text():
-                selected_channels_image2.append(int(item.text().split()[-1]))
+        # Get pixel values for all images
+        pixel_values = []
+        for image in self.images:
+            pixel_values.append(image[int(y), int(x), :])
 
-        # Get pixel values
-        pixel_values_image1 = self.array1[int(y), int(x), selected_channels_image1] if selected_channels_image1 else []
-        pixel_values_image2 = self.array2[int(y), int(x), selected_channels_image2] if selected_channels_image2 else []
-
-        # Combine pixel values for plotting
-        combined_pixel_values = np.concatenate([pixel_values_image1, pixel_values_image2])
-        combined_channels = list(range(1, len(combined_pixel_values) + 1))
+        # combined_pixel_values = np.concatenate(pixel_values)
+        combined_channels = list(range(840))
 
         # Plot the pixel values
         plt.figure(figsize=(6, 4))
-        plt.plot(combined_channels, combined_pixel_values, marker='o')
+        plt.plot(combined_channels, pixel_values[0], marker='o', color='b')
+        plt.plot(combined_channels, pixel_values[1], marker='o', color='g')
         plt.title(f"Pixel Value Plot at ({x}, {y})")
         plt.xlabel("Channel Number")
         plt.ylabel("Pixel Value")
