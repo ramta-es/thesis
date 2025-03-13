@@ -3,7 +3,7 @@ from utils import save_checkpoint, load_checkpoint, save_some_examples
 import torch.nn as nn
 import torch.optim as optim
 import config
-from dataset import  Pix2PixDataset
+from dataset import Pix2PixDataset
 from torch.utils.data import Subset
 from pix2pix_model import Generator, Discriminator
 from torch.utils.data import DataLoader
