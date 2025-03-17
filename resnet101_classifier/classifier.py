@@ -22,11 +22,12 @@ from tqdm import tqdm
 import config
 
 
+# Set CUDA_LAUNCH_BLOCKING to 1
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+print(f"CUDA_LAUNCH_BLOCKING is set to: {os.environ['CUDA_LAUNCH_BLOCKING']}")
+
 cudnn.benchmark = True
 # plt.ion()
-
-
-
 
 
 
@@ -71,7 +72,7 @@ def save_checkpoint(model, optimizer, filename="my_checkpoint.pth.tar"):
 # imshow(out, 'out') #, title=[classes[x] for x in classes if len(classes) < 5])
 
 
-def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, scheduler, writer, num_epochs=25):
+def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, scheduler, train_writer, val_writer, num_epochs=25):
     since = time.time()
     print('line 74')
     # Create a temporary directory to save training checkpoints
@@ -128,37 +129,51 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, schedul
 
 
 
-                # print(f'{phase} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
+                        # print(f'{phase} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
 
-                # deep copy the model
-                if phase == 'val' and epoch_acc > best_acc:
-                    best_acc = epoch_acc
-                    writer.add_scalar('val/accuracy', epoch_acc, epoch)
-                    torch.save(model.state_dict(), best_model_params_path)
-                    save_checkpoint(model, optimizer)
-            writer.add_scalar(f'{phase}/loss', loss.item(), epoch)
-            writer.add_scalar(f'epoch_loss', epoch_loss, epoch)
+                        # deep copy the model
 
-        img_grid = torchvision.utils.make_grid(inputs[[3, 5, 10], [40, 30, 60], :, :])
-        writer.add_image(f'HS_image_channel{40}', img_grid)
-        # writer.add_graph(torchvision.models.resnet101(False).cpu(), img_grid)
-        writer.close()
+                        best_acc = epoch_acc
+
+                        torch.save(model.state_dict(), best_model_params_path)
+                        save_checkpoint(model, optimizer)
+                if phase == 'train':
+                    train_writer.add_scalar(f'loss', loss.item(), epoch)
+                    train_writer.add_scalar('accuracy', epoch_acc, epoch)
+                else:
+                    val_writer.add_scalar(f'loss', loss.item(), epoch)
+                    val_writer.add_scalar('accuracy', epoch_acc, epoch)
+
+                train_writer.add_scalar(f'epoch_loss', epoch_loss, epoch)
+            valid_indices = [i for i in [3, 5, 10] if i < inputs.size(0)]
+            if valid_indices:
+                img_grid = torchvision.utils.make_grid(inputs[valid_indices, :, :, :])
+                val_writer.add_image('HS_image', img_grid)
 
 
 
-        time_elapsed = time.time() - since
-        print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
-        print(f'Best val Acc: {best_acc:4f}')
+    # img_grid = torchvision.utils.make_grid(inputs[[3, 5, 10], [40, 30, 60], :, :])
+        # writer.add_image(f'HS_image_channel{40}', img_grid)
+        # # writer.add_graph(torchvision.models.resnet101(False).cpu(), img_grid)
+        # writer.close()
 
-        # load best model weights
-        model.load_state_dict(torch.load(best_model_params_path))
+
+
+            time_elapsed = time.time() - since
+            print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
+            print(f'Best val Acc: {best_acc:4f}')
+
+            # load best model weights
+            model.load_state_dict(torch.load(best_model_params_path))
+        val_writer.close()
+        train_writer.close()
         return model
 
 
 
 
 
-def visualize_model(model, dataloaders, writer, num_images=1):
+def visualize_model(model, dataloaders, train_writer, val_writer, num_images=1):
     was_training = model.training
     model.eval()
     images_so_far = 0
@@ -207,11 +222,12 @@ def main():
 
     print('line 221')
 
-    dataloaders = {'train': torch.utils.data.DataLoader(train_dataset, batch_size=25, shuffle=True),
-                   'val': torch.utils.data.DataLoader(test_dataset, batch_size=5, shuffle=True)}
+    dataloaders = {'train': torch.utils.data.DataLoader(train_dataset, batch_size=2, shuffle=True),
+                   'val': torch.utils.data.DataLoader(test_dataset, batch_size=1, shuffle=True)}
 
     ######
-    writer = SummaryWriter('runs/remote/classifier')  ###### Added
+    valwriter = SummaryWriter('runs/remote/classifier')  ###### Added
+    trainwriter = SummaryWriter('runs/remote/classifier')  ###### Added
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     model_ft = models.resnet101(weights=models.ResNet101_Weights.IMAGENET1K_V2)
@@ -229,10 +245,10 @@ def main():
     exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
 
     model_ft = train_model(model_ft, dataloaders, dataset_sizes, criterion, optimizer_ft, exp_lr_scheduler,
-                           writer, num_epochs=50)
+                           trainwriter, valwriter, num_epochs=100)
 
 
-    visualize_model(model_ft, dataloaders, writer)
+    visualize_model(model_ft, dataloaders, trainwriter, valwriter)
     print('vis model')
 '''
 

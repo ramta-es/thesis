@@ -36,7 +36,7 @@ class ClassifierDataset(Dataset):
         self.channels = channels
         self.c_step = c_step
         ###
-        # self.images = self.images[0:10]
+        self.images = self.images[10:20]
         ###
         # self.images = list(filter(lambda x: np.load(str(x)).ndim == 3, self.images))
 
