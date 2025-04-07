@@ -11,6 +11,7 @@ from matplotlib.figure import Figure
 from pathlib import Path
 import spectral as spy
 from typing import Any, Dict
+spy.settings.envi_support_nonlowercase_params = True
 
 
 class NumpyViewerApp(QWidget):
@@ -80,7 +81,7 @@ class NumpyViewerApp(QWidget):
                 print(f"PNG path: {images['image'][0]}, RAW image shape: {images['image'][1].shape}")
                 png_image = plt.imread(str(images['image'][0]))
                 self.image1 = (png_image, images['image'][1])
-                self.bands = images['image'][1].bands.centers
+                self.bands = [float(band) for band in images['image'][1].metadata['Wavelength']]
                 self.shape_label1.setText(f"Loaded PNG and RAW images from Folder 1 with shape {png_image.shape}.")
             else:
                 QMessageBox.warning(self, "Error", f"PNG or RAW file not found in {folder_path}!")
@@ -136,7 +137,7 @@ class NumpyViewerApp(QWidget):
             self.ax1.set_title("No Image 1")
 
         # Plot pixel values if a point is selected
-        if self.points:
+        if self.points and self.bands is not None:
             x, y = self.points[-1]
             pixel_values = self.image1[1][int(y), int(x), :].flatten()
             self.ax2.plot(self.bands, pixel_values, marker='o', markersize=2, label='Pixel Values')
