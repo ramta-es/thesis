@@ -10,7 +10,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from pathlib import Path
 import spectral as spy
-from typing import Any
+from typing import Any, Dict
 
 
 class NumpyViewerApp(QWidget):
@@ -25,6 +25,7 @@ class NumpyViewerApp(QWidget):
         super().__init__()
         self.initUI()
         self.image1 = None  # Store tuple of (PNG image, RAW image)
+        self.bands = None  # Store bands from the image
         self.points = []  # Stores clicked points for distance calculation
         self.selected_channels = []  # Stores selected channels for visualization
         self.select_polygon = False  # Flag to indicate if polygon selection mode is on
@@ -74,26 +75,48 @@ class NumpyViewerApp(QWidget):
         """Load a NumPy image file."""
         folder_path = QFileDialog.getExistingDirectory(self, "Select Folder")
         if folder_path:
-            png_path, raw_image, hdr_file = self.open_image(Path(folder_path))
-            if png_path and raw_image is not None:
-                print(f"PNG path: {png_path}, RAW image shape: {raw_image.shape}")
-                png_image = plt.imread(str(png_path))
-                self.image1 = (png_image, raw_image)
+            images = self.open_image(Path(folder_path))
+            if images is not None:
+                print(f"PNG path: {images['image'][0]}, RAW image shape: {images['image'][1].shape}")
+                png_image = plt.imread(str(images['image'][0]))
+                self.image1 = (png_image, images['image'][1])
+                self.bands = images['image'][1].bands.centers
                 self.shape_label1.setText(f"Loaded PNG and RAW images from Folder 1 with shape {png_image.shape}.")
             else:
                 QMessageBox.warning(self, "Error", f"PNG or RAW file not found in {folder_path}!")
 
     @staticmethod
-    def open_image(image_folder: Path) -> tuple[Any, Any, Any]:
-        png_path = list((Path(image_folder).glob('*.png')))
-        cap = Path(image_folder).joinpath('capture')
-        if len(list(cap.glob('*.raw'))) > 0:
-            raw_file = list(cap.glob('*.raw'))[0]
-            hdr_file = list(cap.glob('*.hdr'))[0]
-            spec_img = spy.io.envi.open(hdr_file.as_posix(), raw_file.as_posix())
-            spec_img = spec_img[:, :, :]
-            return str(png_path[0]), spec_img, hdr_file
-        return None, None, None
+    def open_image(image_folder: Path) -> Dict[str, Any]:
+        png_files = list(image_folder.glob('*.png'))
+        cap = image_folder / 'capture'
+        raw_files = list(cap.glob('*.raw'))
+        hdr_files = list(cap.glob('*.hdr'))
+
+        if raw_files and hdr_files:
+            files = list(zip(hdr_files, raw_files))
+            try:
+                darkref_files = next((hdr, raw) for hdr, raw in files if 'DARKREF' in hdr.name)
+                whiteref_files = next((hdr, raw) for hdr, raw in files if 'WHITEREF' in hdr.name)
+                image_files = next(
+                    (hdr, raw) for hdr, raw in files if 'DARKREF' not in hdr.name and 'WHITEREF' not in hdr.name)
+
+                spec_img = spy.io.envi.open(image_files[0].as_posix(), image_files[1].as_posix())
+                darkref = spy.io.envi.open(darkref_files[0].as_posix(), darkref_files[1].as_posix())
+                whiteref = spy.io.envi.open(whiteref_files[0].as_posix(), whiteref_files[1].as_posix())
+                return {
+                    'image': (str(png_files[0]), spec_img),
+                    'whiteref': whiteref,
+                    'darkref': darkref
+                }
+            except:
+                image_files = next(
+                    (hdr, raw) for hdr, raw in files if 'DARKREF' not in hdr.name and 'WHITEREF' not in hdr.name)
+                spec_img = spy.io.envi.open(image_files[0].as_posix(), image_files[1].as_posix())
+
+            return {
+                'image': (str(png_files[0]), spec_img)
+            }
+        return None
 
     def show_image(self):
         """Display the PNG image and plot pixel values if available."""
@@ -115,10 +138,10 @@ class NumpyViewerApp(QWidget):
         # Plot pixel values if a point is selected
         if self.points:
             x, y = self.points[-1]
-            pixel_values = self.image1[1][int(y), int(x), :]
-            self.ax2.plot(pixel_values, marker='o', markersize=5, label='Pixel Values')
+            pixel_values = self.image1[1][int(y), int(x), :].flatten()
+            self.ax2.plot(self.bands, pixel_values, marker='o', markersize=2, label='Pixel Values')
             self.ax2.set_title(f"Pixel Values at ({x:.1f}, {y:.1f})")
-            self.ax2.set_xlabel("Channel Number")
+            self.ax2.set_xlabel("Wavelength (nm)")
             self.ax2.set_ylabel("Pixel Value")
             self.ax2.legend()
         else:
