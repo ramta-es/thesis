@@ -24,12 +24,17 @@ class NumpyViewerApp(QWidget):
     def __init__(self):
         """Initialize the GUI and application state variables."""
         super().__init__()
-        self.initUI()
+        self.images = None  # Store loaded images
         self.image1 = None  # Store tuple of (PNG image, RAW image)
+        self.original_image1 = None  # Store the original image for reverting
+        self.whiteref = None  # Store reference images
+        self.darkref = None  # Store reference images
         self.bands = None  # Store bands from the image
         self.points = []  # Stores clicked points for distance calculation
         self.selected_channels = []  # Stores selected channels for visualization
         self.select_polygon = False  # Flag to indicate if polygon selection mode is on
+        self.is_normalized = False  # Flag to track if the image is normalized
+        self.initUI()
 
     def initUI(self):
         """Set up the GUI layout and widgets."""
@@ -52,6 +57,11 @@ class NumpyViewerApp(QWidget):
         self.show_image_button = QPushButton("Show RGB Image")
         self.show_image_button.clicked.connect(self.show_image)
         layout.addWidget(self.show_image_button)
+
+        # Combined button for normalizing and reverting the image
+        self.norm_revert_button = QPushButton("Normalize Image")
+        self.norm_revert_button.clicked.connect(self.toggle_norm_revert)
+        layout.addWidget(self.norm_revert_button)
 
         # Matplotlib canvas for image display
         self.canvas = FigureCanvas(Figure())
@@ -76,15 +86,19 @@ class NumpyViewerApp(QWidget):
         """Load a NumPy image file."""
         folder_path = QFileDialog.getExistingDirectory(self, "Select Folder")
         if folder_path:
-            images = self.open_image(Path(folder_path))
-            if images is not None:
-                print(f"PNG path: {images['image'][0]}, RAW image shape: {images['image'][1].shape}")
-                png_image = plt.imread(str(images['image'][0]))
-                self.image1 = (png_image, images['image'][1])
-                self.bands = [float(band) for band in images['image'][1].metadata['Wavelength']]
+            self.images = self.open_image(Path(folder_path))
+            if self.images is not None:
+                print(f"PNG path: {self.images['image'][0]}, RAW image shape: {self.images['image'][1].shape}")
+                png_image = plt.imread(str(self.images['image'][0]))
+                self.image1 = (png_image, self.images['image'][1])
+                self.original_image1 = (png_image, self.images['image'][1])  # Save the original image
+                self.bands = [float(band) for band in self.images['image'][1].metadata['Wavelength']]
                 self.shape_label1.setText(f"Loaded PNG and RAW images from Folder 1 with shape {png_image.shape}.")
             else:
                 QMessageBox.warning(self, "Error", f"PNG or RAW file not found in {folder_path}!")
+            if self.images['whiteref'] is not None and self.images['darkref'] is not None:
+                self.whiteref = self.images['whiteref']
+                self.darkref = self.images['darkref']
 
     @staticmethod
     def open_image(image_folder: Path) -> Dict[str, Any]:
@@ -136,23 +150,64 @@ class NumpyViewerApp(QWidget):
         else:
             self.ax1.set_title("No Image 1")
 
-        # Plot pixel values if a point is selected
+        # Plot pixel values for all selected points
         if self.points and self.bands is not None:
-            x, y = self.points[-1]
-            pixel_values = self.image1[1][int(y), int(x), :].flatten()
-            self.ax2.plot(self.bands, pixel_values, marker='o', markersize=2, label='Pixel Values')
-            self.ax2.set_title(f"Pixel Values at ({x:.1f}, {y:.1f})")
+            for i, (x, y) in enumerate(self.points):
+                pixel_values = self.image1[1][int(y), int(x), :].flatten()
+                self.ax2.plot(self.bands, pixel_values, marker='o', markersize=2, label=f'Point {i+1} ({x:.1f}, {y:.1f})')
+
+            self.ax2.set_title("Pixel Values for Selected Points")
             self.ax2.set_xlabel("Wavelength (nm)")
             self.ax2.set_ylabel("Pixel Value")
-            self.ax2.legend()
+            self.ax2.legend(prop={'size': 5})
         else:
             self.ax2.set_title("No Pixel Values")
 
         self.canvas.draw()
 
+    def toggle_norm_revert(self):
+        """Toggle between normalizing the image and reverting to the original."""
+        if self.image1 is None:
+            QMessageBox.warning(self, "Error", "No images loaded!")
+            return
+
+        if self.is_normalized:
+            # Revert to the original image
+            self.image1 = self.original_image1
+            self.norm_revert_button.setText("Normalize Image")
+            self.is_normalized = False
+        else:
+            # Normalize the image
+            if self.darkref is None or self.whiteref is None:
+                QMessageBox.warning(self, "Error", "Missing 'darkref' or 'whiteref' in metadata")
+                return
+
+            spec_img = self.image1[1].load().astype(np.float16)
+            darkref = self.darkref.load().astype(np.float16)
+            whiteref = self.whiteref.load().astype(np.float16)
+
+            # Check if shapes are compatible
+            if spec_img.shape != darkref.shape:
+                darkref_median = np.median(darkref, axis=0)
+                darkref = np.tile(darkref_median, (spec_img.shape[0], 1, 1))
+            if spec_img.shape != whiteref.shape:
+                whiteref_median = np.median(whiteref, axis=0)
+                whiteref = np.tile(whiteref_median, (spec_img.shape[0], 1, 1))
+
+            # Add a small epsilon to avoid division by zero
+            epsilon = 1e-6
+            normalized_data = (spec_img - darkref) / (whiteref - darkref + epsilon)
+
+            # Update the image with normalized data
+            self.image1 = (self.image1[0], normalized_data.astype(np.float16))
+            self.norm_revert_button.setText("Revert to Original Image")
+            self.is_normalized = True
+
+        self.show_image()
+
     def on_click(self, event):
         """Handles the click event on the canvas to select points."""
-        if event.inaxes != self.ax1 and event.inaxes != self.ax2:
+        if event.inaxes != self.ax1:
             return
 
         # Record the coordinates of the click
@@ -160,14 +215,9 @@ class NumpyViewerApp(QWidget):
 
         print(f"Point selected: {event.xdata}, {event.ydata}")
 
-        # If in polygon mode, plot the polygon
-        if self.select_polygon:
-            self.ax1.plot([point[0] for point in self.points],
-                          [point[1] for point in self.points], 'r-')
-        else:
-            # Mark the selected point and add coordinates text
-            self.ax1.plot(event.xdata, event.ydata, 'ro')
-            self.ax1.text(event.xdata, event.ydata, f'({event.xdata:.1f}, {event.ydata:.1f})', color='white')
+        # Mark the selected point and add coordinates text
+        self.ax1.plot(event.xdata, event.ydata, 'ro')
+        self.ax1.text(event.xdata, event.ydata, f'({event.xdata:.1f}, {event.ydata:.1f})', color='white')
 
         self.canvas.draw()
 
