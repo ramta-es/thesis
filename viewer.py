@@ -75,10 +75,13 @@ class NumpyViewerApp(QWidget):
         self.plot_pixel_button.clicked.connect(self.show_image)
         layout.addWidget(self.plot_pixel_button)
 
-        # Button to toggle between selecting a polygon or a single point
+        ''' uncomment for polygon selection'''
+        '''
+        Button to toggle between selecting a polygon or a single point
         self.toggle_polygon_button = QPushButton("Select Polygon")
         self.toggle_polygon_button.clicked.connect(self.toggle_polygon_mode)
         layout.addWidget(self.toggle_polygon_button)
+        '''
 
         self.setLayout(layout)
 
@@ -88,7 +91,6 @@ class NumpyViewerApp(QWidget):
         if folder_path:
             self.images = self.open_image(Path(folder_path))
             if self.images is not None:
-                print(f"PNG path: {self.images['image'][0]}, RAW image shape: {self.images['image'][1].shape}")
                 png_image = plt.imread(str(self.images['image'][0]))
                 self.image1 = (png_image, self.images['image'][1])
                 self.original_image1 = (png_image, self.images['image'][1])  # Save the original image
@@ -221,7 +223,6 @@ class NumpyViewerApp(QWidget):
         # Record the coordinates of the click
         self.points.append((event.xdata, event.ydata))
 
-        print(f"Point selected: {event.xdata}, {event.ydata}")
 
         # Mark the selected point and add coordinates text
         self.ax1.plot(event.xdata, event.ydata, 'ro')
@@ -229,12 +230,15 @@ class NumpyViewerApp(QWidget):
 
         self.canvas.draw()
 
+    ''' uncomment for polygon selection'''
+    '''
     def toggle_polygon_mode(self):
         """Toggle between single point and polygon selection mode."""
         self.select_polygon = not self.select_polygon
         self.points = []  # Reset points when switching modes
         mode = "polygon" if self.select_polygon else "single point"
         QMessageBox.information(self, "Mode Changed", f"Switched to {mode} selection mode.")
+    '''
 
 
 if __name__ == "__main__":
