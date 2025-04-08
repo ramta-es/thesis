@@ -54,8 +54,8 @@ class NumpyViewerApp(QWidget):
         layout.addWidget(self.shape_label1)
 
         # Button to display selected channels
-        self.show_image_button = QPushButton("Show RGB Image")
-        self.show_image_button.clicked.connect(self.show_image)
+        self.show_image_button = QPushButton("Clear")
+        self.show_image_button.clicked.connect(self.clear)
         layout.addWidget(self.show_image_button)
 
         # Combined button for normalizing and reverting the image
@@ -94,6 +94,7 @@ class NumpyViewerApp(QWidget):
                 self.original_image1 = (png_image, self.images['image'][1])  # Save the original image
                 self.bands = [float(band) for band in self.images['image'][1].metadata['Wavelength']]
                 self.shape_label1.setText(f"Loaded PNG and RAW images from Folder 1 with shape {png_image.shape}.")
+                self.show_image()
             else:
                 QMessageBox.warning(self, "Error", f"PNG or RAW file not found in {folder_path}!")
             if self.images['whiteref'] is not None and self.images['darkref'] is not None:
@@ -164,6 +165,13 @@ class NumpyViewerApp(QWidget):
             self.ax2.set_title("No Pixel Values")
 
         self.canvas.draw()
+
+    def clear(self):
+        """Clear the plot and the chosen pixels."""
+        self.ax2.clear()  # Clear the pixel values plot
+        self.points = []  # Reset the list of selected points
+        self.ax2.set_title("Pixel Values for Selected Points")  # Optionally reset the title
+        self.canvas.draw()  # Redraw the canvas
 
     def toggle_norm_revert(self):
         """Toggle between normalizing the image and reverting to the original."""
