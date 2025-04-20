@@ -2,8 +2,9 @@ import sys
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+from matplotlib.path import Path
 from PyQt5.QtWidgets import (QApplication, QWidget, QPushButton, QFileDialog, QLabel, QVBoxLayout,
-                             QHBoxLayout, QComboBox, QMessageBox, QListWidget, QListWidgetItem)
+                             QHBoxLayout, QComboBox, QMessageBox, QListWidget, QListWidgetItem, QRadioButton, QButtonGroup)
 from PyQt5.QtGui import QIcon
 from PyQt5.QtCore import Qt
 from scipy.spatial.distance import euclidean
@@ -24,6 +25,7 @@ class NumpyViewerApp(QWidget):
         self.initUI()
         self.images = []  # List to store NumPy arrays
         self.points = []  # Stores clicked points for distance calculation
+        self.poly = []
         self.selected_pixels = []  # Stores selected pixel values for statistics
         self.selected_channels = []  # Stores selected channels for visualization
         self.mean = {}
@@ -51,6 +53,32 @@ class NumpyViewerApp(QWidget):
         self.shape_label = QLabel("Images Shape: Not Loaded")
         layout.addWidget(self.shape_label)
 
+        # Radio buttons for options (horizontal layout)
+        radio_layout = QHBoxLayout()
+        self.radio_group = QButtonGroup(self)
+        self.radio_option1 = QRadioButton("Average")
+        self.radio_option2 = QRadioButton("Median")
+        self.radio_option3 = QRadioButton("Standard Deviation")
+        self.radio_option4 = QRadioButton("Sigma")
+        self.radio_option5 = QRadioButton("Variance")
+
+        self.radio_group.addButton(self.radio_option1)
+        self.radio_group.addButton(self.radio_option2)
+        self.radio_group.addButton(self.radio_option3)
+        self.radio_group.addButton(self.radio_option4)
+        self.radio_group.addButton(self.radio_option5)
+
+        self.radio_option1.setChecked(True)
+
+        radio_layout.addWidget(self.radio_option1)
+        radio_layout.addWidget(self.radio_option2)
+        radio_layout.addWidget(self.radio_option3)
+        radio_layout.addWidget(self.radio_option4)
+        radio_layout.addWidget(self.radio_option5)
+        layout.addLayout(radio_layout)
+
+        self.radio_group.buttonClicked.connect(self.on_radio_button_clicked)
+
         # Channel selector for visualization
         self.channel_selector = QListWidget()
         self.channel_selector.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
@@ -60,13 +88,6 @@ class NumpyViewerApp(QWidget):
         self.show_image_button = QPushButton("Show Selected Channels")
         self.show_image_button.clicked.connect(self.show_image)
         layout.addWidget(self.show_image_button)
-
-        # Matplotlib canvas for image display
-        self.canvas = FigureCanvas(Figure())
-        layout.addWidget(self.canvas)
-        self.ax1 = self.canvas.figure.add_subplot(1, 2, 1)  # Left subplot for Image 1
-        self.ax2 = self.canvas.figure.add_subplot(1, 2, 2)  # Right subplot for Image 2
-        self.canvas.mpl_connect("button_press_event", self.on_click)
 
         # Button to calculate Euclidean distance
         self.distance_button = QPushButton("Calculate Distance")
@@ -88,7 +109,19 @@ class NumpyViewerApp(QWidget):
         self.toggle_polygon_button.clicked.connect(self.toggle_polygon_mode)
         layout.addWidget(self.toggle_polygon_button)
 
+        # Matplotlib canvas for image display
+        self.canvas = FigureCanvas(Figure())
+        layout.addWidget(self.canvas)
+        self.ax1 = self.canvas.figure.add_subplot(1, 3, 1)  # Left subplot for Image 1
+        self.ax2 = self.canvas.figure.add_subplot(1, 3, 2)  # Right subplot for Image 2
+        self.ax3 = self.canvas.figure.add_subplot(1, 3, 3)  # Right subplot for statistics
+        self.canvas.mpl_connect("button_press_event", self.on_click)
+
         self.setLayout(layout)
+
+    def on_radio_button_clicked(self, button):
+        """Handle radio button selection."""
+        QMessageBox.information(self, "Radio Button Selected", f"You selected: {button.text()}")
 
     def load_folder(self):
         """Load all NumPy image files from the selected folder."""
@@ -128,6 +161,7 @@ class NumpyViewerApp(QWidget):
         # Clear and update the axes
         self.ax1.clear()
         self.ax2.clear()
+        self.ax3.clear()
 
         # Show selected channels for the first two images if available
         if len(self.images) > 0:
@@ -137,6 +171,7 @@ class NumpyViewerApp(QWidget):
 
         self.ax1.set_title("Image 1")
         self.ax2.set_title("Image 2")
+        self.ax3.set_title("Statistics")
         self.canvas.draw()
 
     def calculate_distance(self):
@@ -148,16 +183,38 @@ class NumpyViewerApp(QWidget):
         dist = euclidean(self.points[0], self.points[1])
         QMessageBox.information(self, "Distance", f"Euclidean Distance: {dist:.2f} pixels")
 
+    @staticmethod
+    def calculate_polygon_mean(image: np.ndarray, vertices: list) -> float:
+        """
+        Calculate the mean pixel value inside a polygon in a given image.
+
+        Parameters:
+            image (np.ndarray): The input image as a 2D or 3D NumPy array.
+            vertices (list): A list of (x, y) tuples representing the polygon vertices.
+
+        Returns:
+            float: The mean pixel value inside the polygon.
+        """
+        vertices_array = np.array(vertices)
+        height, width = image.shape[:2]
+        y, x = np.meshgrid(np.arange(height), np.arange(width), indexing='ij')
+        coords = np.stack((x.ravel(), y.ravel()), axis=-1)
+        polygon_path = Path(vertices_array)
+        mask = polygon_path.contains_points(coords).reshape(height, width)
+        if image.ndim == 3:
+            mean_value = np.mean(image[mask], axis=0)
+        else:
+            mean_value = np.mean(image[mask])
+        return mean_value
+
     def on_click(self, event):
         """Handles the click event on the canvas to select points."""
         if event.inaxes != self.ax1 and event.inaxes != self.ax2:
             return
 
-        # Record the coordinates of the click
         self.points.append((event.xdata, event.ydata))
         print(f"Point selected: {event.xdata}, {event.ydata}")
 
-        # If in polygon mode, plot the polygon
         if self.select_polygon:
             self.ax1.plot([point[0] for point in self.points],
                           [point[1] for point in self.points], 'r-')
@@ -165,8 +222,11 @@ class NumpyViewerApp(QWidget):
                           [point[1] for point in self.points], 'r-')
             self.canvas.draw()
 
+            self.mean_0 = self.calculate_polygon_mean(self.images[0], self.points)
+            self.mean_1 = self.calculate_polygon_mean(self.images[1], self.points)
+
         elif len(self.points) == 2:
-            self.calculate_distance()  # Automatically calculate distance when two points are selected
+            self.calculate_distance()
 
     def toggle_polygon_mode(self):
         """Toggle between single point and polygon selection mode."""
@@ -180,28 +240,22 @@ class NumpyViewerApp(QWidget):
             QMessageBox.warning(self, "Error", "Select a point on the image!")
             return
 
-        # Get the coordinates of the selected pixel
         x, y = self.points[-1]
-
-        # Get the selected channels for all images
         selected_items = self.channel_selector.selectedItems()
         selected_channels = [int(item.text().split()[-1]) for item in selected_items]
 
-        # Calculate statistics for the selected pixel across all loaded images
         pixel_values = []
         for image in self.images:
             pixel_values.append(image[int(y), int(x), selected_channels])
 
         combined_pixel_values = np.concatenate(pixel_values)
 
-        # Calculate statistics (mean, median, std_dev, etc.)
         self.mean = np.mean(combined_pixel_values)
         self.median = np.median(combined_pixel_values)
         self.std_dev = np.std(combined_pixel_values)
         self.min_val = np.min(combined_pixel_values)
         self.max_val = np.max(combined_pixel_values)
 
-        # Display the statistics
         QMessageBox.information(self, "Pixel Statistics",
                                 f"Mean: {self.mean:.2f}\n Median: {self.median:.2f}\n Standard Deviation: {self.std_dev:.2f}"
                                 f"\nMin: {self.min_val:.2f}\nMax: {self.max_val:.2f}")
@@ -212,22 +266,16 @@ class NumpyViewerApp(QWidget):
             QMessageBox.warning(self, "Error", "Select a point on the image!")
             return
 
-        # Get the coordinates of the selected pixel
         x, y = self.points[-1]
-
-        # Get the selected channels for all images
         selected_items = self.channel_selector.selectedItems()
         selected_channels = [int(item.text().split()[-1]) for item in selected_items]
 
-        # Get pixel values for all images
         pixel_values = []
         for image in self.images:
             pixel_values.append(image[int(y), int(x), :])
 
-        # combined_pixel_values = np.concatenate(pixel_values)
         combined_channels = list(range(840))
 
-        # Plot the pixel values
         plt.figure(figsize=(6, 4))
         plt.plot(combined_channels, pixel_values[0], marker='o', color='b')
         plt.plot(combined_channels, pixel_values[1], marker='o', color='g')
