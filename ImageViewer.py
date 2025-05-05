@@ -10,6 +10,7 @@ from PyQt5.QtCore import Qt
 from scipy.spatial.distance import euclidean
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+import cv2
 
 
 class NumpyViewerApp(QWidget):
@@ -26,6 +27,8 @@ class NumpyViewerApp(QWidget):
         self.images = []  # List to store NumPy arrays
         self.points = []  # Stores clicked points for distance calculation
         self.poly = []
+        self.mean_0 = []
+        self.mean_1 = []
         self.selected_pixels = []  # Stores selected pixel values for statistics
         self.selected_channels = []  # Stores selected channels for visualization
         self.mean = {}
@@ -43,11 +46,12 @@ class NumpyViewerApp(QWidget):
         self.setGeometry(100, 100, 800, 600)
 
         layout = QVBoxLayout()
+        button_layout = QHBoxLayout()
 
         # Buttons for loading images
         self.load_button = QPushButton("Load NumPy Images from Folder")
         self.load_button.clicked.connect(self.load_folder)
-        layout.addWidget(self.load_button)
+        button_layout.addWidget(self.load_button)
 
         # Labels to display image shapes
         self.shape_label = QLabel("Images Shape: Not Loaded")
@@ -87,33 +91,40 @@ class NumpyViewerApp(QWidget):
         # Button to display selected channels
         self.show_image_button = QPushButton("Show Selected Channels")
         self.show_image_button.clicked.connect(self.show_image)
-        layout.addWidget(self.show_image_button)
+        button_layout.addWidget(self.show_image_button)
 
         # Button to calculate Euclidean distance
         self.distance_button = QPushButton("Calculate Distance")
         self.distance_button.clicked.connect(self.calculate_distance)
-        layout.addWidget(self.distance_button)
+        button_layout.addWidget(self.distance_button)
+
+        # Button to calculate Euclidean distance
+        self.plot_spectrum_button = QPushButton("Plot Spectrum")
+        self.plot_spectrum_button.clicked.connect(self.plot_spectrum)
+        button_layout.addWidget(self.plot_spectrum_button)
 
         # Button to calculate pixel statistics
         self.pixel_stats_button = QPushButton("Calculate Pixel Statistics")
         self.pixel_stats_button.clicked.connect(self.calculate_pixel_statistics)
-        layout.addWidget(self.pixel_stats_button)
+        button_layout.addWidget(self.pixel_stats_button)
 
         # Button to plot pixel values across channels
         self.plot_pixel_button = QPushButton("Plot Pixel Values")
         self.plot_pixel_button.clicked.connect(self.plot_pixel_values)
-        layout.addWidget(self.plot_pixel_button)
+        button_layout.addWidget(self.plot_pixel_button)
 
         # Button to toggle between selecting a polygon or a single point
         self.toggle_polygon_button = QPushButton("Select Polygon")
         self.toggle_polygon_button.clicked.connect(self.toggle_polygon_mode)
-        layout.addWidget(self.toggle_polygon_button)
+        button_layout.addWidget(self.toggle_polygon_button)
+
+        layout.addLayout(button_layout)
 
         # Matplotlib canvas for image display
         self.canvas = FigureCanvas(Figure())
         layout.addWidget(self.canvas)
         self.ax1 = self.canvas.figure.add_subplot(1, 3, 1)  # Left subplot for Image 1
-        self.ax2 = self.canvas.figure.add_subplot(1, 3, 2)  # Right subplot for Image 2
+        self.ax2 = self.canvas.figure.add_subplot(1, 3, 2)  # middel subplot for Image 2
         self.ax3 = self.canvas.figure.add_subplot(1, 3, 3)  # Right subplot for statistics
         self.canvas.mpl_connect("button_press_event", self.on_click)
 
@@ -174,6 +185,39 @@ class NumpyViewerApp(QWidget):
         self.ax3.set_title("Statistics")
         self.canvas.draw()
 
+    def plot_spectrum(self):
+        """Plot the spectrum of pixel values across all channels."""
+        self.ax3.clear()
+
+        # Check if a polygon is selected and means are calculated
+        if self.select_polygon and self.mean_0.size > 0 and self.mean_1.size > 0:
+            pixel_values_0 = self.mean_0.squeeze()
+            pixel_values_1 = self.mean_1.squeeze()
+        else:
+            # Ensure there are points selected
+            if not self.points:
+                QMessageBox.warning(self, "Error", "Select a point or polygon on the image!")
+                return
+            # FIXME: check if the points are in the image and normalized
+            # Use the last selected point
+            x, y = (int(self.points[-1][0]) ,int(self.points[-1][1]))
+            pixel_values_0 = self.images[0][y, x, :] / np.max(np.max(self.images[0], axis=0), axis=0)
+            pixel_values_1 = self.images[1][y, x, :] / np.max(np.max(self.images[1], axis=0), axis=0)
+
+        # Plot the spectrum for both images
+        channels = np.arange(pixel_values_0.shape[0])
+        self.ax3.plot(channels, pixel_values_0, label="Image 1", color="blue")
+        self.ax3.plot(channels, pixel_values_1, label="Image 2", color="green")
+
+        self.ax3.set_title("Spectrum of Pixel Values")
+        self.ax3.set_xlabel("Channel")
+        self.ax3.set_ylabel("Pixel Value")
+        self.ax3.legend()
+        self.ax3.grid(True)
+
+        self.canvas.draw()
+
+
     def calculate_distance(self):
         """Calculate Euclidean distance between two selected points."""
         if len(self.points) < 2:
@@ -183,29 +227,37 @@ class NumpyViewerApp(QWidget):
         dist = euclidean(self.points[0], self.points[1])
         QMessageBox.information(self, "Distance", f"Euclidean Distance: {dist:.2f} pixels")
 
+
+
     @staticmethod
-    def calculate_polygon_mean(image: np.ndarray, vertices: list) -> float:
+    def calculate_polygon_mean(image: np.ndarray, vertices: list) -> np.ndarray:
         """
-        Calculate the mean pixel value inside a polygon in a given image.
+        Create a mask for pixels inside a polygon using OpenCV.
 
         Parameters:
             image (np.ndarray): The input image as a 2D or 3D NumPy array.
             vertices (list): A list of (x, y) tuples representing the polygon vertices.
 
         Returns:
-            float: The mean pixel value inside the polygon.
+            np.ndarray: A 2D or 3D NumPy array containing the pixel values inside the polygon.
         """
-        vertices_array = np.array(vertices)
+        # Create a blank mask with the same height and width as the image
         height, width = image.shape[:2]
-        y, x = np.meshgrid(np.arange(height), np.arange(width), indexing='ij')
-        coords = np.stack((x.ravel(), y.ravel()), axis=-1)
-        polygon_path = Path(vertices_array)
-        mask = polygon_path.contains_points(coords).reshape(height, width)
-        if image.ndim == 3:
-            mean_value = np.mean(image[mask], axis=0)
-        else:
-            mean_value = np.mean(image[mask])
-        return mean_value
+        mask = np.zeros((height, width), dtype=np.uint16)
+
+        # Convert vertices to a NumPy array of integer type
+        polygon = np.array([vertices], dtype=np.int32)
+
+        # Fill the polygon on the mask
+        cv2.fillPoly(mask, polygon, 1)
+
+        # Apply the mask to the image
+        if image.ndim == 3:  # For 3D images (e.g., multi-channel)
+            mask = mask[:, :, np.newaxis]
+            # masked_image = mask * image
+            median = (np.median(image[mask.squeeze() == 1], axis=0).reshape(1, 1, -1) /
+                      np.max(image[mask.squeeze() == 1], axis=0).reshape(1, 1, -1))
+        return median
 
     def on_click(self, event):
         """Handles the click event on the canvas to select points."""
@@ -232,8 +284,9 @@ class NumpyViewerApp(QWidget):
         """Toggle between single point and polygon selection mode."""
         self.select_polygon = not self.select_polygon
         mode = "polygon" if self.select_polygon else "single point"
+        self.points = []
         QMessageBox.information(self, "Mode Changed", f"Switched to {mode} selection mode.")
-
+    # FIXME: plot the statistics of the selected pixels
     def calculate_pixel_statistics(self):
         """Calculate statistics for the selected pixel."""
         if not self.points:
@@ -243,18 +296,19 @@ class NumpyViewerApp(QWidget):
         x, y = self.points[-1]
         selected_items = self.channel_selector.selectedItems()
         selected_channels = [int(item.text().split()[-1]) for item in selected_items]
+        if self.mean_0 and self.mean_1:
+            pixel_values = (self.mean_0, self.mean_1)
+        else:
+            pixel_values = (self.image1[int(y), int(x), :], self.image1[int(y), int(x), :])
 
-        pixel_values = []
-        for image in self.images:
-            pixel_values.append(image[int(y), int(x), selected_channels])
 
-        combined_pixel_values = np.concatenate(pixel_values)
+        # combined_pixel_values = np.concatenate(pixel_values)
 
-        self.mean = np.mean(combined_pixel_values)
-        self.median = np.median(combined_pixel_values)
-        self.std_dev = np.std(combined_pixel_values)
-        self.min_val = np.min(combined_pixel_values)
-        self.max_val = np.max(combined_pixel_values)
+        self.mean = (np.mean(pixel_values[0], axis=2), np.mean(pixel_values[1], axis=2))
+        self.median = (np.median(pixel_values[0], axis=2), np.median(pixel_values[1], axis=2))
+        self.std_dev = (np.std(pixel_values[0], axis=2), np.std(pixel_values[1], axis=2))
+        self.min_val = (np.min(pixel_values[0], axis=2), np.min(pixel_values[1], axis=2))
+        self.max_val = (np.max(pixel_values[0], axis=2), np.max(pixel_values[1], axis=2))
 
         QMessageBox.information(self, "Pixel Statistics",
                                 f"Mean: {self.mean:.2f}\n Median: {self.median:.2f}\n Standard Deviation: {self.std_dev:.2f}"
