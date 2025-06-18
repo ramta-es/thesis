@@ -32,7 +32,7 @@ class Trainer:
         self.criterion = criterion
         self.optimizer = optimizer
         self.num_epochs = num_epochs
-        self.writer = SummaryWriter('runs/resnet101_classifier')
+        self.writer = SummaryWriter('/Users/ramtahor/PycharmProjects/thesis/resnet101_classifier/runs')
 
     def train(self):
         for epoch in range(self.num_epochs):

@@ -17,7 +17,7 @@ from tempfile import TemporaryDirectory
 # from dataset import ClassifierDataset
 from resnet101_classifier.dataset import ClassifierDataset
 from torch.utils.tensorboard import SummaryWriter
-import clearml_agent
+# import clearml_agent
 from tqdm import tqdm
 import config
 

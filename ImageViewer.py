@@ -1,5 +1,7 @@
 import sys
 import numpy as np
+import torch
+import torch.nn.functional as F
 import os
 import matplotlib.pyplot as plt
 from matplotlib.path import Path
@@ -148,6 +150,17 @@ class NumpyViewerApp(QWidget):
                     else:
                         QMessageBox.warning(self, "Error", f"File {file_name} is not a 3D array!")
             if self.images:
+                if self.images[0].shape[0] * self.images[0].shape[1] > self.images[1].shape[0] * self.images[1].shape[1]:
+                    self.images[0] = cv2.resize(self.images[0], (self.images[1].shape[0], self.images[1].shape[1]
+                                                                 ), interpolation=cv2.INTER_LINEAR)
+                else:
+                    self.images[1] = cv2.resize(self.images[1], (
+                    self.images[0].shape[0], self.images[0].shape[1]),
+                                                interpolation=cv2.INTER_LINEAR)
+
+                print('image 0 shape', self.images[0].shape)
+                print('images 1 shape', self.images[1].shape)
+
                 self.shape_label.setText(f"Loaded {len(self.images)} images.")
                 self.populate_channel_selector()
             else:
@@ -201,8 +214,14 @@ class NumpyViewerApp(QWidget):
             # FIXME: check if the points are in the image and normalized
             # Use the last selected point
             x, y = (int(self.points[-1][0]) ,int(self.points[-1][1]))
-            pixel_values_0 = self.images[0][y, x, :] / np.max(np.max(self.images[0], axis=0), axis=0)
-            pixel_values_1 = self.images[1][y, x, :] / np.max(np.max(self.images[1], axis=0), axis=0)
+            print('max image shape', np.max(self.images[0], axis=0).shape)
+            # pixel_values_0 = ((self.images[0][y, x, :] - np.min(np.min(self.images[0], axis=0), axis=0)) /
+            #                   (10e-6 + np.max(np.max(self.images[0], axis=0), axis=0)) - np.min(np.min(self.images[0], axis=0), axis=0))
+            # pixel_values_1 = ((self.images[1][y, x, :] - np.min(np.min(self.images[1], axis=0), axis=0)) /
+            #                   (10e-6 + np.max(np.max(self.images[1], axis=0), axis=0)) - np.min(np.min(self.images[1], axis=0), axis=0))
+
+            pixel_values_0 = (self.images[0][y, x, :]) / 4096
+            pixel_values_1 = (self.images[1][y, x, :]) / 4096
 
         # Plot the spectrum for both images
         channels = np.arange(pixel_values_0.shape[0])
