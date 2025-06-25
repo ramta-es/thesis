@@ -129,7 +129,7 @@ def hyper_spec_calc(image_path: Union[str, Path],
     result = image[:, :, None, :] * percentage_mat  # shape (H, W, 87, 1)
 
     # Sum across the last axis (channels)
-    return xp.sum(result, axis=-1)  # shape (H, W, 87)
+    return xp.sum(result, axis=-1).transpose((2, 0, 1))  # shape (C, H, W)
 
 
 class NumpyViewerApp(QWidget):
@@ -175,10 +175,6 @@ class NumpyViewerApp(QWidget):
         self.load_file_button = QPushButton("Load Single NumPy File")
         self.load_file_button.clicked.connect(self.load_single_file)
         load_layout.addWidget(self.load_file_button)
-
-        self.load_folder_button = QPushButton("Load NumPy Files from Folder")
-        self.load_folder_button.clicked.connect(self.load_folder)
-        load_layout.addWidget(self.load_folder_button)
 
         # Add CSV loading button
         self.load_csv_button = QPushButton("Load Spectral CSV")
@@ -329,7 +325,7 @@ class NumpyViewerApp(QWidget):
             if QMessageBox.question(self, "Load Result",
                                     "Do you want to load the result for viewing?",
                                     QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
-                self.images = [result]  # Replace with new result
+                self.images = [result.transpose((1, 2, 0))]  # Replace with new result
                 self.populate_channel_selector()
                 self.show_image()
         except Exception as e:
@@ -371,34 +367,6 @@ class NumpyViewerApp(QWidget):
                     QMessageBox.warning(self, "Error", f"File {os.path.basename(file_path)} is not a 3D array!")
             except Exception as e:
                 QMessageBox.warning(self, "Error", f"Failed to load file: {str(e)}")
-
-    def load_folder(self):
-        """Load all NumPy image files from the selected folder."""
-        folder_path = QFileDialog.getExistingDirectory(self, "Select Folder")
-        if folder_path:
-            self.images = []  # Clear existing images
-            loaded_files = 0
-
-            for file_name in os.listdir(folder_path):
-                if file_name.endswith(".npy"):
-                    file_path = os.path.join(folder_path, file_name)
-                    try:
-                        array = np.load(file_path)
-                        if array.ndim == 3:
-                            self.images.append(array)
-                            loaded_files += 1
-                            break  # Load only the first valid file
-                        else:
-                            QMessageBox.warning(self, "Error", f"File {file_name} is not a 3D array!")
-                    except Exception as e:
-                        QMessageBox.warning(self, "Error", f"Failed to load {file_name}: {str(e)}")
-
-            if loaded_files > 0:
-                print('image shape', self.images[0].shape)
-                self.shape_label.setText(f"Loaded {loaded_files} image(s).")
-                self.populate_channel_selector()
-            else:
-                QMessageBox.warning(self, "Error", "No valid .npy files found in the folder.")
 
     def populate_channel_selector(self):
         """Populate the channel selector with available channels."""
@@ -500,7 +468,7 @@ class NumpyViewerApp(QWidget):
         image = self.images[0]
         try:
             # Normalize the pixel values by dividing by 60536 (common for 16-bit images)
-            pixel_values = image[y_int, x_int, :] / 65536 # Normalize to [0, 1] range
+            pixel_values = image[y_int, x_int, :] / 65536  # Normalize to [0, 1] range
 
             # Plot the values
             if self.wavelengths is not None:
