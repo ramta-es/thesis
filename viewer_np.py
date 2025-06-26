@@ -11,6 +11,7 @@ from PyQt5.QtGui import QIcon
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from pathlib import Path
 
 from typing import Any, Dict
@@ -38,7 +39,6 @@ if GPU_AVAILABLE:
     xp = cp
 else:
     xp = np  # fallback to NumPy
-
 
 
 class SpectralWorker(QObject):
@@ -119,7 +119,7 @@ def read_and_filter_csv(csv_path):
 
 
 def hyper_spec_calc(image_path: Union[str, Path],
-                         percentage_mat: Union[np.ndarray, Any]) -> np.ndarray:
+                    percentage_mat: Union[np.ndarray, Any]) -> np.ndarray:
     if not isinstance(image_path, str):
         image_path = str(image_path)
 
@@ -221,43 +221,52 @@ class NumpyViewerApp(QWidget):
         self.shape_label = QLabel("Images Shape: Not Loaded")
         layout.addWidget(self.shape_label)
 
-        # Channel selector for visualization
+        # Channel selector with FIXED HEIGHT
         self.channel_selector = QListWidget()
         self.channel_selector.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        self.channel_selector.setFixedHeight(80)  # Set fixed height
         layout.addWidget(self.channel_selector)
 
-        # Button to display selected channels
+        # Button layout
         self.show_image_button = QPushButton("Show Selected Channels")
         self.show_image_button.clicked.connect(self.show_image)
         button_layout.addWidget(self.show_image_button)
 
-        # Button to plot pixel values across channels
         self.plot_pixel_button = QPushButton("Plot Pixel Values")
         self.plot_pixel_button.clicked.connect(self.plot_pixel_values)
         button_layout.addWidget(self.plot_pixel_button)
 
-        # Button to toggle between selecting a polygon or a single point
-        self.toggle_polygon_button = QPushButton("Select Polygon")
-        self.toggle_polygon_button.clicked.connect(self.toggle_polygon_mode)
-        button_layout.addWidget(self.toggle_polygon_button)
+        # Add clear button
+        self.clear_button = QPushButton("Clear Points")
+        self.clear_button.clicked.connect(self.clear)
+        button_layout.addWidget(self.clear_button)
 
-        # button to run spectral calculation
         self.calc_button = QPushButton("Run Spectral Calculation")
         self.calc_button.clicked.connect(self.run_spectral_calculation)
         button_layout.addWidget(self.calc_button)
 
         layout.addLayout(button_layout)
 
-        # Matplotlib canvas for image display with only two subplots
+        # Matplotlib canvas configured to expand
+        from PyQt5.QtWidgets import QSizePolicy
         self.canvas = FigureCanvas(Figure())
-        layout.addWidget(self.canvas)
-        self.ax1 = self.canvas.figure.add_subplot(1, 2, 1)  # Left subplot for Image
-        self.ax3 = self.canvas.figure.add_subplot(1, 2, 2)  # Right subplot for statistics
+        self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        # Create matplotlib toolbar for navigation (zoom, pan, etc.)
+        self.toolbar = NavigationToolbar(self.canvas, self)
+
+        # Add canvas and toolbar to layout
+        layout.addWidget(self.toolbar)  # Add the toolbar
+        layout.addWidget(self.canvas, 1)  # The '1' is a stretch factor
+
+        self.ax1 = self.canvas.figure.add_subplot(1, 2, 1)
+        self.ax3 = self.canvas.figure.add_subplot(1, 2, 2)
         self.canvas.mpl_connect("button_press_event", self.on_click)
 
         self.setLayout(layout)
 
     def load_csv_file(self):
+        self.clear()
         """Load spectral data from a CSV file."""
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Select CSV File", "", "CSV Files (*.csv)"
@@ -416,18 +425,41 @@ class NumpyViewerApp(QWidget):
             return
 
         selected_items = self.channel_selector.selectedItems()
-        self.selected_channels = [int(item.text().split()[-1]) for item in selected_items]
+        self.selected_channels = [int(self.channel_selector.row(item)) for item in selected_items]
 
-        # Clear and update the axes
+        # Clear only the image axis, not the plot axis
         self.ax1.clear()
-        self.ax3.clear()
 
         # Show selected channels for the image
         if self.images:
-            self.ax1.imshow(self.images[0][:, :, self.selected_channels].astype(np.uint16))
+            # If no channels selected, use first channel
+            if not self.selected_channels:
+                self.selected_channels = [0]
+
+            if len(self.selected_channels) == 1:
+                # Display single channel as grayscale
+                self.ax1.imshow(self.images[0][:, :, self.selected_channels[0]], cmap='gray')
+            else:
+                # For multiple channels, create a composite (use first 3 channels at most)
+                rgb_channels = self.selected_channels[:3]
+                while len(rgb_channels) < 3:
+                    rgb_channels.append(0)  # Pad with zeros if needed
+
+                rgb_img = np.zeros((self.images[0].shape[0], self.images[0].shape[1], 3))
+                for i, chan in enumerate(rgb_channels[:3]):
+                    rgb_img[:, :, i] = self.images[0][:, :, chan]
+
+                # Normalize for display
+                if rgb_img.max() > 0:
+                    rgb_img = rgb_img / rgb_img.max()
+                self.ax1.imshow(rgb_img)
+
+            # Redraw all previously selected points
+            for x, y in self.points:
+                self.ax1.plot(x, y, 'go')  # Green circle
+                self.ax1.text(x, y, f'({x:.1f}, {y:.1f})', color='white')
 
         self.ax1.set_title("Image")
-        self.ax3.set_title("Pixel Values")
         self.canvas.draw()
 
     def clear(self):
@@ -441,91 +473,85 @@ class NumpyViewerApp(QWidget):
         if event.inaxes != self.ax1:
             return
 
+        # Check if the toolbar is in navigation mode (zoom, pan, etc.)
+        if self.toolbar.mode != "":
+            return  # Skip point selection when using toolbar navigation tools
+
         # Record the coordinates of the click
         self.points.append((event.xdata, event.ydata))
         print(f"Point selected: {event.xdata}, {event.ydata}")
 
-        if self.select_polygon:
-            # Draw connected lines for polygon mode
-            if len(self.points) > 1:
-                self.ax1.plot([self.points[-2][0], self.points[-1][0]],
-                              [self.points[-2][1], self.points[-1][1]], 'r-')
-        else:
-            # Mark individual points in non-polygon mode
-            self.ax1.plot(event.xdata, event.ydata, 'ro')
-            self.ax1.text(event.xdata, event.ydata, f'({event.xdata:.1f}, {event.ydata:.1f})', color='white')
+        # Use 'go' for green circle marker
+        self.ax1.plot(event.xdata, event.ydata, 'go')
+        self.ax1.text(event.xdata, event.ydata, f'({event.xdata:.1f}, {event.ydata:.1f})', color='white')
 
         self.canvas.draw()
-
-    # def toggle_polygon_mode(self):
-    #     """Toggle between single point and polygon selection mode."""
-    #     self.select_polygon = not self.select_polygon
-    #     self.points = []  # Reset points when switching modes
-    #     mode = "polygon" if self.select_polygon else "single point"
-    #     QMessageBox.information(self, "Mode Changed", f"Switched to {mode} selection mode.")
 
         # Clear any existing points on the plots
         self.ax1.clear()
         self.show_image()  # Refresh the display
 
     def plot_pixel_values(self):
-        """Plot the pixel values across all channels for the selected point."""
+        """Plot the pixel values across all channels for all selected points."""
         if not self.points:
-            QMessageBox.warning(self, "Error", "Select a point on the image!")
+            QMessageBox.warning(self, "Error", "Select at least one point on the image!")
             return
 
         if not self.images:
             QMessageBox.warning(self, "Error", "No images loaded!")
             return
 
-        # Get the coordinates of the last selected point
-        x, y = self.points[-1]
-
-        # Convert to integers for indexing
-        x_int, y_int = int(x), int(y)
-
-        # Get image dimensions
-        img_height, img_width = self.images[0].shape[:2]
-
-        # Check if the point is within image boundaries
-        if (x_int < 0 or x_int >= img_width or
-                y_int < 0 or y_int >= img_height):
-            QMessageBox.warning(self, "Error",
-                                f"Selected point ({x_int}, {y_int}) is outside image boundaries! "
-                                f"Image dimensions are {img_width}x{img_height}")
-            return
-
         # Clear the plot
         self.ax3.clear()
 
-        # Get pixel values for the loaded image
+        # Get image dimensions
+        img_height, img_width = self.images[0].shape[:2]
         image = self.images[0]
-        try:
-            # Normalize the pixel values by dividing by 60536 (common for 16-bit images)
-            pixel_values = image[y_int, x_int, :] / 65536  # Normalize to [0, 1] range
 
-            # Plot the values
-            if self.wavelengths is not None:
-                # If we have wavelength data from CSV, use that for x-axis
-                self.ax3.plot(self.wavelengths, pixel_values, marker='o', label="Spectral Profile", color='blue')
-            else:
-                # Otherwise use channel indices
-                channel_indices = np.arange(pixel_values.shape[0])
-                self.ax3.plot(channel_indices, pixel_values, marker='o', label="Channel Values", color='blue')
-        except IndexError as e:
-            print(f"IndexError: {e} for image with shape {image.shape}")
-            QMessageBox.warning(self, "Error", f"Index error: {e}")
-            return
+        # Define a list of colors for multiple plots
+        colors = ['blue', 'red', 'green', 'purple', 'orange', 'cyan', 'magenta', 'yellow']
 
-        # Set appropriate x-axis label
+        # Plot data for each selected point
+        for idx, (x, y) in enumerate(self.points):
+            # Convert to integers for indexing
+            x_int, y_int = int(x), int(y)
+
+            # Check if the point is within image boundaries
+            if x_int < 0 or x_int >= img_width or y_int < 0 or y_int >= img_height:
+                print(f"Point ({x_int}, {y_int}) is outside image boundaries!")
+                continue
+
+            try:
+                # Get pixel values for this point
+                pixel_values = image[y_int, x_int, :]
+
+                # Select color (cycle through colors if more points than colors)
+                color = colors[idx % len(colors)]
+
+                # Plot with the point coordinates in the label
+                if self.wavelengths is not None:
+                    self.ax3.plot(self.wavelengths, pixel_values, marker='o',
+                                  label=f"Point {idx + 1} ({x_int}, {y_int})",
+                                  color=color, markersize=3)
+                else:
+                    channel_indices = np.arange(pixel_values.shape[0])
+                    self.ax3.plot(channel_indices, pixel_values, marker='o',
+                                  label=f"Point {idx + 1} ({x_int}, {y_int})",
+                                  color=color, markersize=3)
+
+            except IndexError as e:
+                print(f"IndexError at point ({x_int}, {y_int}): {e}")
+                continue
+
+        # Set labels and title
         if self.wavelengths is not None:
             self.ax3.set_xlabel("Wavelength (nm)")
         else:
             self.ax3.set_xlabel("Channel")
 
-        self.ax3.set_title(f"Pixel Values at ({x_int}, {y_int})")
-        self.ax3.set_ylabel("Normalized Value")
-        self.ax3.legend()
+        self.ax3.set_ylabel("Pixel Value")
+        self.ax3.set_title(f"Spectral Profiles for {len(self.points)} Points")
+        self.ax3.legend(loc='best', prop={'size': 8})
         self.ax3.grid(True)
         self.canvas.draw()
 
