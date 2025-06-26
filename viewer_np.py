@@ -12,7 +12,7 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from pathlib import Path
-import spectral as spy
+
 from typing import Any, Dict
 
 from pathlib import Path
@@ -39,7 +39,6 @@ if GPU_AVAILABLE:
 else:
     xp = np  # fallback to NumPy
 
-spy.settings.envi_support_nonlowercase_params = True
 
 
 class SpectralWorker(QObject):
@@ -120,16 +119,51 @@ def read_and_filter_csv(csv_path):
 
 
 def hyper_spec_calc(image_path: Union[str, Path],
-                    percentage_mat: Union[np.ndarray, Any]) -> Union[np.ndarray, Any]:
+                         percentage_mat: Union[np.ndarray, Any]) -> np.ndarray:
     if not isinstance(image_path, str):
         image_path = str(image_path)
-    image = xp.load(image_path)  # Load the hyperspectral image
-    if image.ndim == 3 and image.shape[0] < 100:
-        image = xp.transpose(image, (1, 2, 0))  # WxHxC array
-    result = image[:, :, None, :] * percentage_mat  # shape (H, W, 87, 1)
 
-    # Sum across the last axis (channels)
-    return xp.sum(result, axis=-1).transpose((2, 0, 1))  # shape (C, H, W)
+    # Load image with NumPy first to check dimensions
+    image_np = np.load(image_path)
+
+    # Transpose if needed
+    if image_np.ndim == 3 and image_np.shape[0] < 100:
+        image_np = np.transpose(image_np, (1, 2, 0))
+        print(f"Image shape after transpose: {image_np.shape}")
+
+    # Get dimensions
+    height, width, channels = image_np.shape
+
+    # Move percentage matrix to GPU once
+    percentage_mat_gpu = cp.asarray(percentage_mat)
+    num_outputs = percentage_mat_gpu.shape[0]
+
+    # Create result matrix in CPU memory
+    result_matrix = np.zeros((height, width, num_outputs), dtype=np.float32)
+
+    start_loop = time.time()
+    for i in range(height):
+        # Process one row at a time to save GPU memory
+        row_gpu = cp.asarray(image_np[i])  # Shape: (width, channels)
+
+        # Set up broadcasting dimensions
+        expanded_row = row_gpu[:, None, :]  # Shape: (width, 1, channels)
+        expanded_pmat = percentage_mat_gpu[None, :, :]  # Shape: (1, num_outputs, channels)
+
+        # Multiply and sum
+        weighted = expanded_row * expanded_pmat
+        row_result = xp.sum(weighted, axis=2)
+
+        # Move result back to CPU
+        result_matrix[i] = xp.asnumpy(row_result)
+
+        # Free memory periodically
+        if i % 100 == 0:
+            cp.get_default_memory_pool().free_all_blocks()
+            print(f"Processing row {i}/{height} ({i / height * 100:.1f}%)")
+
+    print(f"Total processing time: {time.time() - start_loop:.2f} seconds")
+    return result_matrix.transpose((2, 0, 1))
 
 
 class NumpyViewerApp(QWidget):
@@ -423,12 +457,12 @@ class NumpyViewerApp(QWidget):
 
         self.canvas.draw()
 
-    def toggle_polygon_mode(self):
-        """Toggle between single point and polygon selection mode."""
-        self.select_polygon = not self.select_polygon
-        self.points = []  # Reset points when switching modes
-        mode = "polygon" if self.select_polygon else "single point"
-        QMessageBox.information(self, "Mode Changed", f"Switched to {mode} selection mode.")
+    # def toggle_polygon_mode(self):
+    #     """Toggle between single point and polygon selection mode."""
+    #     self.select_polygon = not self.select_polygon
+    #     self.points = []  # Reset points when switching modes
+    #     mode = "polygon" if self.select_polygon else "single point"
+    #     QMessageBox.information(self, "Mode Changed", f"Switched to {mode} selection mode.")
 
         # Clear any existing points on the plots
         self.ax1.clear()
