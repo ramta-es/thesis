@@ -523,7 +523,7 @@ class NumpyViewerApp(QWidget):
 
             try:
                 # Get pixel values for this point
-                pixel_values = image[y_int, x_int, :]
+                pixel_values = image[y_int, x_int, :] / np.max(image[y_int, x_int, :])  # Normalize pixel values
 
                 # Select color (cycle through colors if more points than colors)
                 color = colors[idx % len(colors)]
