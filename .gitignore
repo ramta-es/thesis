@@ -1,0 +1,44 @@
+# IDE
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+
+# Models and checkpoints
+*.pth
+*.pth.tar
+checkpoints/
+
+# Logs and runs
+*.log
+runs/
+
+# Images and plots
+*.png
+
+# Sensitive data
+token.txt
+# IDE
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+
+# Models and checkpoints
+*.pth
+*.pth.tar
+checkpoints/
+
+# Logs and runs
+*.log
+runs/
+
+# Images and plots
+*.png
+
+# Sensitive data
+token.txt
+resnet101_classifier/my_checkpoint.pth.tar
+*.pth.tar
