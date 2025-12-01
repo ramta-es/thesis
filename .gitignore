@@ -42,3 +42,5 @@ runs/
 token.txt
 resnet101_classifier/my_checkpoint.pth.tar
 *.pth.tar
+*.pth.tar
+*.pth
