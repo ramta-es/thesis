@@ -36,7 +36,8 @@ class ClassifierDataset(Dataset):
         self.channels = channels
         self.c_step = c_step
         ###
-        self.images = self.images[10:20]
+        # self.images = self.images[:20]
+        self.images = [image for image in self.images if 'class_A' in str(image) or 'class_D' in str(image)]
         ###
         # self.images = list(filter(lambda x: np.load(str(x)).ndim == 3, self.images))
 
@@ -83,7 +84,5 @@ class ClassifierDataset(Dataset):
             image = config.transform_only_input(image=image)["image"]
 
         return image.transpose((2, 1, 0)).astype(np.float32), label
-
-
 
 
