@@ -1,0 +1,50 @@
+{
+  "build": "h46256e1_0",
+  "build_number": 0,
+  "channel": "https://repo.anaconda.com/pkgs/main/osx-64",
+  "constrains": [],
+  "depends": [],
+  "extracted_package_dir": "/Users/ramtahor/anaconda3/pkgs/libmpdec-4.0.0-h46256e1_0",
+  "features": "",
+  "files": [
+    "lib/libmpdec.4.0.0.dylib",
+    "lib/libmpdec.4.dylib"
+  ],
+  "fn": "libmpdec-4.0.0-h46256e1_0.conda",
+  "legacy_bz2_md5": "c23d4efaea60f4e6329804e1056da228",
+  "license": "BSD-2-Clause",
+  "license_family": "BSD",
+  "link": {
+    "source": "/Users/ramtahor/anaconda3/pkgs/libmpdec-4.0.0-h46256e1_0",
+    "type": 1
+  },
+  "md5": "0dd8a0c2be2e6ae5fdad8e45992bd86b",
+  "name": "libmpdec",
+  "package_tarball_full_path": "/Users/ramtahor/anaconda3/pkgs/libmpdec-4.0.0-h46256e1_0.conda",
+  "paths_data": {
+    "paths": [
+      {
+        "_path": "lib/libmpdec.4.0.0.dylib",
+        "path_type": "hardlink",
+        "sha256": "6c1c755f02ecac9fdf47b623a0a44a361e0e9b7df6133a0dae41e8d17ffc933d",
+        "sha256_in_prefix": "6c1c755f02ecac9fdf47b623a0a44a361e0e9b7df6133a0dae41e8d17ffc933d",
+        "size_in_bytes": 185744
+      },
+      {
+        "_path": "lib/libmpdec.4.dylib",
+        "path_type": "softlink",
+        "sha256": "6c1c755f02ecac9fdf47b623a0a44a361e0e9b7df6133a0dae41e8d17ffc933d",
+        "size_in_bytes": 185744
+      }
+    ],
+    "paths_version": 1
+  },
+  "requested_spec": "None",
+  "sha256": "f9c3a6e933fad1f59712f684c1b752db38181b5a3eed6dd707693660c348de14",
+  "size": 79346,
+  "subdir": "osx-64",
+  "timestamp": 1726088492011,
+  "track_features": "",
+  "url": "https://repo.anaconda.com/pkgs/main/osx-64/libmpdec-4.0.0-h46256e1_0.conda",
+  "version": "4.0.0"
+}

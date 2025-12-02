@@ -1,0 +1,13 @@
+prefix=/Users/ramtahor/PycharmProjects/thesis/aws_env
+exec_prefix=/Users/ramtahor/PycharmProjects/thesis/aws_env
+libdir=/Users/ramtahor/PycharmProjects/thesis/aws_env/lib
+sharedlibdir=/Users/ramtahor/PycharmProjects/thesis/aws_env/lib
+includedir=/Users/ramtahor/PycharmProjects/thesis/aws_env/include
+
+Name: zlib
+Description: zlib compression library
+Version: 1.2.13
+
+Requires:
+Libs: -L${libdir} -L${sharedlibdir} -lz
+Cflags: -I${includedir}

@@ -1,0 +1,5 @@
+#!/Users/ramtahor/PycharmProjects/thesis/aws_env2/bin/python3.13
+
+from idlelib.pyshell import main
+if __name__ == '__main__':
+    main()
