@@ -2,13 +2,14 @@ import os
 from torch.utils.data import Dataset, DataLoader, Subset
 import numpy as np
 from pathlib import Path
+import random
 import pandas as pd
 from colorama import Fore
 import config
 from tqdm import tqdm
 
 
-label_dict = {'A': 0, 'B': 1, 'C': 2, 'D': 3}
+# label_dict = {'A': 0, 'B': 1, 'C': 2, 'D': 3}
 class ClassifierDataset(Dataset):
     """
     Custom dataset for handling hyperspectral images.
@@ -26,18 +27,29 @@ class ClassifierDataset(Dataset):
         images_after (list): List of 'after' image filenames.
     """
 
-    def __init__(self, image_dir, channels: int, c_step: int, transform=False, state='before'):
+    def __init__(self, image_dir, channels: int, c_step: int, transform=False, state='before', label_type='ABCD'):
         self.image_dir = image_dir
         self.transform = transform
         # self.images = os.listdir(image_dir)
         self.images = [file for file in Path(image_dir).glob(f'*/{state}.npy')]
-        self.images.remove(Path('/home/ARO.local/tahor/PycharmProjects/data/pair_data/box_19_class_B_num_88/before.npy'))
+        random.shuffle(self.images)  # Shuffles in-place, doesn't return anything
+
+        if state == 'before':
+            self.images.remove(Path('/home/ARO.local/tahor/PycharmProjects/data/pair_data/box_19_class_B_num_88/before.npy'))
+        # self.images = [image for image in self.images if 'class_A' in str(image) or 'class_D' in str(image)]
         print('len images: ', len(self.images))
         self.channels = channels
         self.c_step = c_step
+        self.label_dict = {
+        'ABCD': {'A': 0, 'B': 1, 'C': 2, 'D': 3},
+        'AD': {'A': 0, 'D': 1},
+        'AB-CD': {'A': 0, 'B': 0, 'C': 1, 'D': 1},
+        'A-BCD': {'A': 0, 'B': 1, 'C': 1, 'D': 1}
+        }
+        self.label_dict = self.label_dict[label_type]
         ###
-        # self.images = self.images[:20]
-        self.images = [image for image in self.images if 'class_A' in str(image) or 'class_D' in str(image)]
+        self.images = self.images[:10]
+
         ###
         # self.images = list(filter(lambda x: np.load(str(x)).ndim == 3, self.images))
 
@@ -75,14 +87,15 @@ class ClassifierDataset(Dataset):
         """
         image_path = self.images[index]
 
-        image = config.initial_transform(image=np.load(str(image_path)
-                                                       )[:, :, [i for i in range(self.channels) if i % self.c_step == 0]] / 4096)['image']
+        image = np.load(str(image_path)).astype(np.float32)[:, :, [i for i in range(self.channels) if i % self.c_step == 0]] / 4096
 
-        label = label_dict[str(image_path).split('/')[-2].split('_')[3]]
+        image = config.initial_transform(image=image)['image']
+
+        label = self.label_dict[str(image_path).split('/')[-2].split('_')[3]]
 
         if self.transform:
             image = config.transform_only_input(image=image)["image"]
 
-        return image.transpose((2, 1, 0)).astype(np.float32), label
+        return image.transpose((2, 1, 0)), label
 
 
